@@ -352,11 +352,13 @@ The 2 todo items (AC-F1, AC-F2) require `make chromium-build`. Everything else p
 
 ## Further reading
 
+- [docs/features.md](docs/features.md) — Full product specification and feature reference (actions, config, privacy, security, performance)
+- [CHANGELOG.md](CHANGELOG.md) — Release history
 - [soul.md](soul.md) — Design philosophy and principles behind Sepia
 - [CLAUDE.md](CLAUDE.md) — Operating guide for AI coding agents working in this repo
 - [SKILLS.md](SKILLS.md) — Catalog of reusable agent skills
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
 - [SECURITY.md](SECURITY.md) — Security policy and threat model
-- [docs/phase1-spec.md](docs/phase1-spec.md) — Full product requirements and technical specification
+- [docs/phase1-spec.md](docs/phase1-spec.md) — Numbered FR-*/AC-* technical specification (development reference)
 - [docs/phase3-addendum.md](docs/phase3-addendum.md) — Phase 3 hardening: AC-* coverage matrix, deferred items, new APIs
 - [examples/research-assistant/](examples/research-assistant/) — SDK demo for the AI engineer persona
