@@ -4,7 +4,7 @@
 
 > Describe it. Sepia finds it, acts on it, scales it, privately.
 
-[![CI](https://github.com/mohinishbasha/sepia/actions/workflows/ci.yml/badge.svg)](https://github.com/mohinishbasha/sepia/actions/workflows/ci.yml)
+[![CI](https://github.com/mohnishbasha/sepia/actions/workflows/ci.yml/badge.svg)](https://github.com/mohnishbasha/sepia/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Security Scan](https://img.shields.io/badge/security-audited-green.svg)](SECURITY.md)
 
