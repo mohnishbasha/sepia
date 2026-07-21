@@ -48,6 +48,12 @@ spec:
                   name: {{ .Values.existingSecret }}
                   key: {{ .Values.existingSecretKey }}
             {{- end }}
+            {{- if .Values.litellm.enabled }}
+            - name: SEPIA_MODEL_ENDPOINT
+              value: "http://localhost:{{ .Values.litellm.port }}/v1"
+            - name: SEPIA_MODEL
+              value: {{ .Values.litellm.defaultModel | quote }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health
@@ -64,6 +70,33 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.litellm.enabled }}
+        - name: litellm
+          image: {{ .Values.litellm.image | quote }}
+          ports:
+            - name: litellm
+              containerPort: {{ .Values.litellm.port }}
+              protocol: TCP
+          args: ["--config", "/etc/litellm/litellm.yaml", "--port", {{ .Values.litellm.port | quote }}]
+          {{- if .Values.litellm.configSecret }}
+          volumeMounts:
+            - name: litellm-config
+              mountPath: /etc/litellm
+              readOnly: true
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.litellm.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 30
+        {{- end }}
+      {{- if and .Values.litellm.enabled .Values.litellm.configSecret }}
+      volumes:
+        - name: litellm-config
+          secret:
+            secretName: {{ .Values.litellm.configSecret }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

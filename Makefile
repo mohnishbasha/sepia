@@ -13,7 +13,8 @@ export TMPDIR
         run-example lint fmt fmt-check typecheck security ci clean \
         patch chromium-build patch-check \
         docker-build docker-run docker-push \
-        helm-lint helm-package helm-install helm-uninstall
+        helm-lint helm-package helm-install helm-uninstall \
+        litellm-start litellm-stop export-traces
 
 # ── Help ──────────────────────────────────────────────────────────────────────
 
@@ -175,6 +176,43 @@ helm-install: ## Install into the current kube context. Usage: make helm-install
 
 helm-uninstall: ## Uninstall from the current kube context
 	helm uninstall $(HELM_RELEASE) --namespace $(HELM_NS)
+
+# ── LiteLLM proxy ─────────────────────────────────────────────────────────────
+
+LITELLM_PORT  ?= 4000
+
+litellm-start: ## Start LiteLLM proxy on :4000 using config/litellm.yaml
+	docker run -d --name sepia-litellm \
+	  -p $(LITELLM_PORT):4000 \
+	  -v "$(CURDIR)/config/litellm.yaml:/etc/litellm/litellm.yaml:ro" \
+	  -e ANTHROPIC_API_KEY="$(ANTHROPIC_API_KEY)" \
+	  -e OPENAI_API_KEY="$(OPENAI_API_KEY)" \
+	  -e GROQ_API_KEY="$(GROQ_API_KEY)" \
+	  -e LITELLM_MASTER_KEY="$(LITELLM_MASTER_KEY)" \
+	  ghcr.io/berriai/litellm:main-latest \
+	  --config /etc/litellm/litellm.yaml --port 4000
+	@echo "LiteLLM proxy running at http://localhost:$(LITELLM_PORT)/v1"
+	@echo "Dashboard: http://localhost:$(LITELLM_PORT)/ui"
+
+litellm-stop: ## Stop and remove the LiteLLM proxy container
+	docker stop sepia-litellm && docker rm sepia-litellm
+
+# ── Training data export ──────────────────────────────────────────────────────
+
+export-traces: ## Export RunTrace JSONL to ShareGPT and Alpaca formats
+	@: $${TRACE_FILE:?Usage: make export-traces TRACE_FILE=traces.jsonl OUT_DIR=out}
+	@: $${OUT_DIR:?Usage: make export-traces TRACE_FILE=traces.jsonl OUT_DIR=out}
+	mkdir -p $(OUT_DIR)
+	pnpm tsx -e "\
+	  import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'; \
+	  import { exportToShareGPT, exportToAlpaca, parseTraceJSONL } from './training/index.js'; \
+	  const traces = parseTraceJSONL(readFileSync('$(TRACE_FILE)', 'utf8')); \
+	  const pages = new Map(); \
+	  mkdirSync('$(OUT_DIR)', { recursive: true }); \
+	  writeFileSync('$(OUT_DIR)/sharegpt.jsonl', exportToShareGPT(traces, pages)); \
+	  writeFileSync('$(OUT_DIR)/alpaca.jsonl', exportToAlpaca(traces, pages)); \
+	  console.log('Exported', traces.length, 'traces to $(OUT_DIR)/'); \
+	"
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 

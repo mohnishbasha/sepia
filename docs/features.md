@@ -18,8 +18,11 @@
 10. [Security hardening](#10-security-hardening)
 11. [Interfaces](#11-interfaces)
 12. [Configuration reference](#12-configuration-reference)
-13. [Performance characteristics](#13-performance-characteristics)
-14. [Explicit non-goals](#14-explicit-non-goals)
+13. [Model compatibility](#13-model-compatibility)
+14. [Training and fine-tuning](#14-training-and-fine-tuning)
+15. [LiteLLM integration](#15-litellm-integration)
+16. [Performance characteristics](#16-performance-characteristics)
+17. [Explicit non-goals](#17-explicit-non-goals)
 
 ---
 
@@ -364,6 +367,9 @@ Full schema in [`config/index.ts`](../config/index.ts). All fields have safe def
 | `model` | `claude-sonnet-4-6` | Model name passed to the API |
 | `apiKey` | — | API key (optional for local models) |
 | `maxTokensPerStep` | `1024` | Max tokens per model call |
+| `jsonMode` | `false` | Add `response_format: {type: "json_object"}` to model calls |
+| `promptStyle` | `default` | System prompt variant: `default` (large models) or `minimal` (SLMs ≤7B) |
+| `tokenEstimation` | `auto` | Token counting: `api`, `local`, or `auto` (API with local fallback) |
 
 ### `browser`
 
@@ -380,10 +386,11 @@ Full schema in [`config/index.ts`](../config/index.ts). All fields have safe def
 |---|---|---|
 | `maxSteps` | `50` | Hard cap on observe-act iterations per run |
 | `maxTokensPerRun` | `100000` | Token budget per run |
-| `maxRetries` | `3` | Max stale-handle retries per action |
+| `maxRetries` | `3` | Max stale-handle retries per action (also caps JSON parse retries) |
 | `retryBackoffMs` | `1000` | Initial backoff for stale-handle retry |
 | `confidenceThreshold` | `0.7` | Minimum resolver confidence to act |
 | `verbosity` | `standard` | Compact view verbosity (`minimal`/`standard`/`full`) |
+| `maxHistorySteps` | `10` | Sliding window: keep last N user/assistant pairs in context |
 
 ### `privacy`
 
@@ -400,7 +407,149 @@ Full schema in [`config/index.ts`](../config/index.ts). All fields have safe def
 
 ---
 
-## 13. Performance characteristics
+## 13. Model compatibility
+
+Sepia works with any OpenAI-compatible model API — cloud or local. The `model` config section controls how Sepia adapts to different model capabilities.
+
+### Prompt styles
+
+| `promptStyle` | Best for | Description |
+|---|---|---|
+| `default` | Large models (Claude, GPT-4, Gemini) | Full system prompt with plain-English explanation and JSON schema examples |
+| `minimal` | Small models (≤ 7B params) | Shorter, more schema-explicit prompt with explicit rules; reduces token overhead |
+
+Set `SEPIA_PROMPT_STYLE=minimal` (or `model.promptStyle: 'minimal'` in code) for local SLMs.
+
+### JSON mode
+
+Some models require explicit `response_format: {type: "json_object"}` to reliably output JSON. Enable it with `SEPIA_JSON_MODE=true` (or `model.jsonMode: true`). When routing through LiteLLM, pair this with `drop_params: true` in the LiteLLM config so the parameter is silently dropped for models that don't support it (e.g. Ollama without the `--json` flag).
+
+### JSON repair and retry
+
+Sepia automatically repairs common formatting errors from small models before retrying:
+- Strips markdown code fences (` ```json ... ``` `)
+- Removes trailing commas before `}` or `]`
+
+Up to `agent.maxRetries` parse attempts are made before aborting the step.
+
+### Message history window
+
+Sepia maintains a rolling conversation window to support multi-step tasks without overflowing small context windows. The last `agent.maxHistorySteps` (default: 10) user/assistant pairs are included in each model call. The system prompt is always present and is not counted against this limit.
+
+### Token estimation
+
+| `tokenEstimation` | Behavior |
+|---|---|
+| `api` | Always trust the usage count reported by the API |
+| `local` | Always estimate locally using a character/word heuristic |
+| `auto` (default) | Use API-reported tokens when available; fall back to local estimate for models that return `null` usage (common for local Ollama instances) |
+
+### Tested provider paths
+
+| Provider | Transport | Notes |
+|---|---|---|
+| Anthropic (Claude) | Direct API | Default; highest reliability |
+| OpenAI (GPT-4o, o1) | Direct API | Full JSON mode support |
+| Ollama (local) | `http://localhost:11434/v1` | Set `promptStyle: minimal`; use LiteLLM for `drop_params` |
+| Groq | OpenAI-compat API | Fast inference for Llama 3.x models |
+| Together AI | OpenAI-compat API | Cloud-hosted open models |
+| Any OpenAI-compat API | Via `SEPIA_MODEL_ENDPOINT` | LiteLLM proxy recommended for multi-provider routing |
+
+---
+
+## 14. Training and fine-tuning
+
+Sepia can export agent execution traces as structured fine-tuning datasets for training open-weights models to perform browser automation.
+
+### Trace format
+
+Every agent run produces a `RunTrace` with per-step details: page content seen, action taken, outcome, token usage, and a `secretsRedacted` flag. Traces are emitted as JSONL to stdout or a file.
+
+### Export formats
+
+| Format | File | Framework support |
+|---|---|---|
+| **ShareGPT JSONL** | `sharegpt.jsonl` | axolotl, LLaMA-Factory, unsloth |
+| **Alpaca JSONL** | `alpaca.jsonl` | Most instruction-tuning pipelines |
+
+Both formats skip:
+- Runs where `outcome !== 'success'`
+- Steps where `secretsRedacted === true` (credentials are never in the training data)
+
+### Usage
+
+```bash
+# Run the agent and save traces
+make run ARGS='run "Find the price of Node.js LTS"' > traces.jsonl
+
+# Export to both formats
+make export-traces TRACE_FILE=traces.jsonl OUT_DIR=out/training
+# → out/training/sharegpt.jsonl
+# → out/training/alpaca.jsonl
+```
+
+The export functions are in `training/index.ts` and can be called directly from TypeScript:
+
+```typescript
+import { exportToShareGPT, exportToAlpaca, parseTraceJSONL } from 'sepia/training';
+
+const traces = parseTraceJSONL(fs.readFileSync('traces.jsonl', 'utf8'));
+const sharegpt = exportToShareGPT(traces, pageContents);
+const alpaca   = exportToAlpaca(traces, pageContents);
+```
+
+### Dataset design notes
+
+- Each successful step becomes **one training sample** (not one per run) — fine-grained supervision signal
+- The system prompt in training data matches Sepia's production `SYSTEM_PROMPT_DEFAULT`
+- Page content is passed as the human turn; the action JSON is the model turn
+- `metadata` field on ShareGPT records includes `runId`, `goal`, `outcome`, `totalTokens` for filtering
+
+---
+
+## 15. LiteLLM integration
+
+[LiteLLM](https://docs.litellm.ai) is an optional proxy layer that sits between Sepia and your model providers. It gives you a single OpenAI-compatible endpoint that can route to 100+ providers, with cost tracking, fallbacks, and rate limiting — all transparent to Sepia.
+
+See [docs/litellm.md](litellm.md) for the full integration guide.
+
+### When to use it
+
+| Need | Without LiteLLM | With LiteLLM |
+|---|---|---|
+| Switch providers | Change env vars and restart | Change one config line |
+| Cost tracking | Not available | Built-in spend dashboard at `:4000/ui` |
+| Fallback chains | Manual retry logic | Automatic `model_list` fallback |
+| Rate limiting across teams | Not available | Per-key rate limits |
+| Load balance across Ollama replicas | Not available | Round-robin or least-busy routing |
+| A/B testing models | Two Sepia instances | One Sepia instance, LiteLLM router |
+
+### Quickstart
+
+```bash
+# Start proxy (requires Docker; config from config/litellm.yaml)
+make litellm-start ANTHROPIC_API_KEY=sk-ant-...
+
+# Point Sepia at it
+export SEPIA_MODEL_ENDPOINT=http://localhost:4000/v1
+export SEPIA_MODEL=anthropic/claude-sonnet-4-6
+make run ARGS='run "What is the Node.js LTS version?"'
+```
+
+### Kubernetes sidecar
+
+The Sepia Helm chart supports LiteLLM as an optional sidecar. When `litellm.enabled: true`, the proxy runs in the same pod and Sepia's endpoint is automatically set to `http://localhost:4000/v1`.
+
+```yaml
+litellm:
+  enabled: true
+  configSecret: litellm-config   # kubectl secret with litellm.yaml key
+  defaultModel: anthropic/claude-sonnet-4-6
+```
+
+---
+
+## 16. Performance characteristics
 
 | Metric | Target | Measured |
 |---|---|---|
@@ -416,7 +565,7 @@ Performance benchmarks marked `—` require a load test runner not included in s
 
 ---
 
-## 14. Explicit non-goals
+## 17. Explicit non-goals
 
 | ID | Non-goal |
 |---|---|

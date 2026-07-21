@@ -46,6 +46,22 @@ hpa:
 chromium:
   noSandbox: true
 
+# LiteLLM optional sidecar.
+# When enabled, a LiteLLM proxy container runs in the same pod as Sepia.
+# Sepia's SEPIA_MODEL_ENDPOINT is automatically overridden to http://localhost:4000/v1
+# and SEPIA_MODEL to litellm.defaultModel.
+litellm:
+  enabled: false
+  image: ghcr.io/berriai/litellm:main-latest
+  port: 4000
+  # Name of a Kubernetes Secret with a "litellm.yaml" key.
+  # Create it with:
+  #   kubectl create secret generic litellm-config \
+  #     --namespace sepia \
+  #     --from-file=litellm.yaml=config/litellm.yaml
+  configSecret: ""
+  defaultModel: "anthropic/claude-sonnet-4-6"
+
 nameOverride: ""
 fullnameOverride: ""
 podAnnotations: {}

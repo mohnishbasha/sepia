@@ -2,11 +2,17 @@ import type { Verbosity } from '../types/index.js';
 
 export type { Verbosity };
 
+export type PromptStyle = 'default' | 'minimal';
+export type TokenEstimation = 'api' | 'local' | 'auto';
+
 export interface ModelConfig {
   endpoint: string;
   model: string;
   apiKey?: string;
   maxTokensPerStep: number;
+  jsonMode?: boolean;
+  promptStyle?: PromptStyle;
+  tokenEstimation?: TokenEstimation;
 }
 
 export interface BrowserConfig {
@@ -24,6 +30,7 @@ export interface AgentConfig {
   retryBackoffMs: number;
   maxRetries: number;
   confidenceThreshold: number;
+  maxHistorySteps?: number;
 }
 
 export interface PrivacyConfig {
@@ -49,6 +56,9 @@ export const defaultConfig: SepiaConfig = {
     endpoint: 'https://api.anthropic.com/v1',
     model: 'claude-sonnet-4-6',
     maxTokensPerStep: 100_000,
+    jsonMode: false,
+    promptStyle: 'default',
+    tokenEstimation: 'auto',
   },
   browser: {
     profile: 'chrome-130-linux-x86_64',
@@ -63,6 +73,7 @@ export const defaultConfig: SepiaConfig = {
     retryBackoffMs: 1_000,
     maxRetries: 3,
     confidenceThreshold: 0.7,
+    maxHistorySteps: 10,
   },
   privacy: {
     telemetry: false,
@@ -72,7 +83,9 @@ export const defaultConfig: SepiaConfig = {
   },
 };
 
-export function mergeConfig(overrides: Partial<SepiaConfig>): SepiaConfig {
+type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? Partial<T[K]> : T[K] };
+
+export function mergeConfig(overrides: DeepPartial<SepiaConfig>): SepiaConfig {
   return {
     model: { ...defaultConfig.model, ...overrides.model },
     browser: { ...defaultConfig.browser, ...overrides.browser },

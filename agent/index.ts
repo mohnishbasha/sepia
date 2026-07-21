@@ -4,6 +4,7 @@ import type { EngineOptions } from '../engine/index.js';
 import { parseAction, dispatch } from '../actions/index.js';
 import { createAuditor, redactSecrets, sanitizeForLLM } from '../privacy/index.js';
 import { createLogger } from '../telemetry/index.js';
+import { estimateTokens } from '../serializer/index.js';
 import type { ActionResult } from '../types/index.js';
 import type { Outcome } from '../types/index.js';
 import type { SepiaConfig } from '../config/index.js';
@@ -36,12 +37,26 @@ export interface SepiaAgent {
   run: (goal: string) => Promise<RunTrace>;
 }
 
-const SYSTEM_PROMPT = `You are a browser automation agent. On each turn you receive the current page state as a compact outline where [e12] are interactive element handles. Respond with exactly one JSON action:
+// Default system prompt — tuned for large models (Claude, GPT-4, Gemini).
+const SYSTEM_PROMPT_DEFAULT = `You are a browser automation agent. On each turn you receive the current page state as a compact outline where [e12] are interactive element handles. Respond with exactly one JSON action:
 {"action":"click","handle":"e12"}
 {"action":"type","handle":"e13","text":"hello@example.com"}
 {"action":"open","url":"https://example.com"}
 {"action":"done","summary":"Completed the task"}
 Only use handles that appear in the current page. Never fabricate handles.`;
+
+// Minimal system prompt — shorter and more schema-explicit for SLMs (≤ 7B).
+// Includes a one-shot example to improve JSON output reliability.
+const SYSTEM_PROMPT_MINIMAL = `Browser agent. Output ONE JSON action per turn. Schema:
+{"action":"click","handle":"[eNN]"}
+{"action":"type","handle":"[eNN]","text":"value"}
+{"action":"open","url":"https://..."}
+{"action":"done","summary":"..."}
+Rules: use only handles shown on page; never invent handles; output raw JSON only.`;
+
+function selectSystemPrompt(style: SepiaConfig['model']['promptStyle']): string {
+  return style === 'minimal' ? SYSTEM_PROMPT_MINIMAL : SYSTEM_PROMPT_DEFAULT;
+}
 
 function formatNode(node: CompactNode, indent: number = 0): string {
   const prefix = '  '.repeat(indent);
@@ -75,7 +90,44 @@ function generateId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
-// Agent factory — Phase 2 M3
+// Attempt to repair common SLM JSON formatting errors before giving up.
+function repairJson(raw: string): string {
+  return raw
+    .trim()
+    // Strip markdown code fences
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    // Trailing commas before } or ]
+    .replace(/,\s*([}\]])/g, '$1')
+    .trim();
+}
+
+// Sliding window: keep only the last N (user + assistant) pairs plus the system prompt.
+function windowedMessages(
+  history: OpenAI.Chat.ChatCompletionMessageParam[],
+  maxHistorySteps: number,
+): OpenAI.Chat.ChatCompletionMessageParam[] {
+  // history contains interleaved user/assistant pairs (no system prompt here).
+  // Each step appends 2 messages, so keep last maxHistorySteps * 2.
+  const maxMessages = maxHistorySteps * 2;
+  return history.length > maxMessages ? history.slice(history.length - maxMessages) : history;
+}
+
+// Resolve token count: prefer API-reported value; fall back to local estimate.
+function resolveTokens(
+  apiTokens: number | undefined | null,
+  inputText: string,
+  outputText: string,
+  mode: SepiaConfig['model']['tokenEstimation'] = 'auto',
+): number {
+  if (mode === 'api' || (mode === 'auto' && apiTokens != null && apiTokens > 0)) {
+    return apiTokens ?? 0;
+  }
+  // 'local' or 'auto' with no API usage data → estimate
+  return estimateTokens(inputText) + estimateTokens(outputText);
+}
+
+// Agent factory
 export function createAgent(config: SepiaConfig): SepiaAgent {
   return {
     async run(goal: string): Promise<RunTrace> {
@@ -104,14 +156,14 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
         apiKey: config.model.apiKey ?? 'no-key',
       });
 
+      const systemPrompt = selectSystemPrompt(config.model.promptStyle ?? 'default');
       let outcome: Outcome = 'error';
       let totalTokens = 0;
 
-      try {
-        const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-          { role: 'system', content: SYSTEM_PROMPT },
-        ];
+      // Conversation history (excludes system prompt; windowed before each call).
+      const history: OpenAI.Chat.ChatCompletionMessageParam[] = [];
 
+      try {
         for (let stepN = 0; stepN < config.agent.maxSteps; stepN++) {
           const stepStart = Date.now();
 
@@ -121,24 +173,18 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             view = await engine.observe({ verbosity: config.agent.verbosity });
           } catch (err) {
             outcome = 'error';
-            const errTrace: StepTrace = {
+            steps.push({
               stepN,
               action: 'observe',
               confidence: 0,
               tokensUsed: 0,
               latencyMs: Date.now() - stepStart,
-              result: {
-                ok: false,
-                confidence: 0,
-                error: { code: 'UNKNOWN', message: String(err) },
-              },
+              result: { ok: false, confidence: 0, error: { code: 'UNKNOWN', message: String(err) } },
               secretsRedacted: false,
-            };
-            steps.push(errTrace);
+            });
             break;
           }
 
-          // Build user message
           // Format and sanitize page content before inserting into LLM context (SR-2)
           const rawPageContent = formatCompactView(view);
           const { sanitized: safePageContent, injectionDetected } = sanitizeForLLM(rawPageContent);
@@ -146,16 +192,9 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
 
           if (injectionDetected) {
             logger.step({
-              timestamp: Date.now(),
-              sessionId,
-              runId,
-              stepN,
-              action: 'observe',
-              confidence: 0,
-              tokensUsed: 0,
-              latencyMs: 0,
-              ok: true,
-              errorCode: 'PROMPT_INJECTION_DETECTED',
+              timestamp: Date.now(), sessionId, runId, stepN,
+              action: 'observe', confidence: 0, tokensUsed: 0, latencyMs: 0,
+              ok: true, errorCode: 'PROMPT_INJECTION_DETECTED',
             });
           }
 
@@ -164,49 +203,85 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             content: userContent,
           };
 
-          // Call model
-          let completion: OpenAI.Chat.ChatCompletion;
-          try {
-            completion = await client.chat.completions.create({
-              model: config.model.model,
-              messages: [...messages, userMsg],
-              max_tokens: 1024,
-            });
-          } catch (err) {
-            outcome = 'error';
-            const errTrace: StepTrace = {
-              stepN,
-              action: 'model_call',
-              confidence: 0,
-              tokensUsed: 0,
-              latencyMs: Date.now() - stepStart,
-              result: {
-                ok: false,
+          // Build windowed message list: system + last N history pairs + current user msg
+          const contextMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+            { role: 'system', content: systemPrompt },
+            ...windowedMessages(history, config.agent.maxHistorySteps ?? 10),
+            userMsg,
+          ];
+
+          // Build model call params
+          const callParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
+            model: config.model.model,
+            messages: contextMessages,
+            max_tokens: 1024,
+          };
+          if (config.model.jsonMode === true) {
+            callParams.response_format = { type: 'json_object' };
+          }
+
+          // Call model with JSON parse retry
+          let rawContent = '';
+          let parsedRaw: unknown;
+          let apiTokensUsed: number | null = null;
+          let modelCallSuccess = false;
+
+          for (let parseAttempt = 0; parseAttempt <= config.agent.maxRetries; parseAttempt++) {
+            let completion: OpenAI.Chat.ChatCompletion;
+            try {
+              completion = await client.chat.completions.create(callParams);
+            } catch (err) {
+              outcome = 'error';
+              steps.push({
+                stepN,
+                action: 'model_call',
                 confidence: 0,
-                error: { code: 'TIMEOUT', message: String(err) },
-              },
-              secretsRedacted: false,
-            };
-            steps.push(errTrace);
+                tokensUsed: 0,
+                latencyMs: Date.now() - stepStart,
+                result: { ok: false, confidence: 0, error: { code: 'TIMEOUT', message: String(err) } },
+                secretsRedacted: false,
+              });
+              break;
+            }
+
+            apiTokensUsed = completion.usage?.total_tokens ?? null;
+            rawContent = completion.choices[0]?.message?.content ?? '';
+
+            // Try to parse; repair and retry on failure
+            try {
+              parsedRaw = JSON.parse(rawContent);
+              modelCallSuccess = true;
+              break;
+            } catch {
+              const repaired = repairJson(rawContent);
+              try {
+                parsedRaw = JSON.parse(repaired);
+                rawContent = repaired;
+                modelCallSuccess = true;
+                break;
+              } catch {
+                if (parseAttempt < config.agent.maxRetries) {
+                  await new Promise<void>((r) => setTimeout(r, config.agent.retryBackoffMs));
+                }
+              }
+            }
+          }
+
+          if (!modelCallSuccess) {
+            outcome = 'error';
             break;
           }
 
-          const tokensUsed = completion.usage?.total_tokens ?? 0;
+          // Resolve token count — fall back to local estimate when API returns nothing
+          const tokensUsed = resolveTokens(
+            apiTokensUsed,
+            contextMessages.map((m) => (typeof m.content === 'string' ? m.content : '')).join(''),
+            rawContent,
+            config.model.tokenEstimation ?? 'auto',
+          );
           totalTokens += tokensUsed;
 
-          const rawContent = completion.choices[0]?.message?.content ?? '';
-
-          // Check if model indicates done
-          let parsedRaw: unknown;
-          try {
-            parsedRaw = JSON.parse(rawContent);
-          } catch {
-            // Not valid JSON — treat as error
-            outcome = 'error';
-            break;
-          }
-
-          // Check for done action (not in ACTION_NAMES, handled specially)
+          // Check for done action
           if (
             typeof parsedRaw === 'object' &&
             parsedRaw !== null &&
@@ -221,7 +296,6 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
           try {
             typedAction = parseAction(parsedRaw);
           } catch {
-            // Invalid action — reject and break
             outcome = 'error';
             break;
           }
@@ -236,39 +310,27 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             try {
               result = await dispatch(typedAction, engine);
             } catch (err) {
-              result = {
-                ok: false,
-                confidence: 0,
-                error: { code: 'UNKNOWN', message: String(err) },
-              };
+              result = { ok: false, confidence: 0, error: { code: 'UNKNOWN', message: String(err) } };
             }
 
-            // Check for stale handle
             const actionResult = result as ActionResult;
-            if (
-              actionResult.error?.code === 'STALE_HANDLE' &&
-              retries < config.agent.maxRetries
-            ) {
+            if (actionResult.error?.code === 'STALE_HANDLE' && retries < config.agent.maxRetries) {
               retries++;
-              // Re-observe and update handle map
               try {
                 view = await engine.observe({ verbosity: config.agent.verbosity });
               } catch {
                 break;
               }
-              // Small backoff
               await new Promise<void>((r) => setTimeout(r, config.agent.retryBackoffMs));
               continue;
             }
             break;
           }
 
-          // Extract confidence from result
           if ('confidence' in result) {
             confidence = (result as ActionResult).confidence;
           }
 
-          // Check for secrets in action text
           if (typedAction.text) {
             const redacted = redactSecrets(typedAction.text);
             secretsRedacted = redacted.count > 0;
@@ -288,38 +350,22 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
           if (typedAction.handle !== undefined) {
             stepTrace.handle = typedAction.handle;
           }
-
           steps.push(stepTrace);
 
-          // Log step
           const stepEvent: Parameters<typeof logger.step>[0] = {
-            timestamp: Date.now(),
-            sessionId,
-            runId,
-            stepN,
-            action: typedAction.action,
-            confidence,
-            tokensUsed,
-            latencyMs,
+            timestamp: Date.now(), sessionId, runId, stepN,
+            action: typedAction.action, confidence, tokensUsed, latencyMs,
             ok: (result as ActionResult).ok ?? true,
           };
-          if (typedAction.handle !== undefined) {
-            stepEvent.handle = typedAction.handle;
-          }
+          if (typedAction.handle !== undefined) stepEvent.handle = typedAction.handle;
           const errCode = (result as ActionResult).error?.code;
-          if (errCode !== undefined) {
-            stepEvent.errorCode = errCode;
-          }
+          if (errCode !== undefined) stepEvent.errorCode = errCode;
           logger.step(stepEvent);
 
-          // Append to conversation
-          messages.push(userMsg);
-          messages.push({
-            role: 'assistant',
-            content: rawContent,
-          });
+          // Append to windowed history
+          history.push(userMsg);
+          history.push({ role: 'assistant', content: rawContent });
 
-          // Audit outbound
           auditor.record({
             destination: config.model.endpoint,
             byteCount: userContent.length,
@@ -327,14 +373,12 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             timestampMs: Date.now(),
           });
 
-          // Budget check — check total tokens
           if (totalTokens >= config.agent.maxTokensPerRun) {
             outcome = 'budget_exceeded';
             break;
           }
         }
 
-        // If we never set outcome to success/budget_exceeded/error after loop, it's budget_exceeded
         if (outcome === 'error' && steps.length >= config.agent.maxSteps) {
           outcome = 'budget_exceeded';
         }
@@ -343,15 +387,9 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
       }
 
       return {
-        runId,
-        goal,
-        sessionId,
-        startMs,
-        endMs: Date.now(),
-        outcome,
-        totalSteps: steps.length,
-        totalTokens,
-        steps,
+        runId, goal, sessionId, startMs,
+        endMs: Date.now(), outcome,
+        totalSteps: steps.length, totalTokens, steps,
       };
     },
   };

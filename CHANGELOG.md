@@ -9,6 +9,28 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+#### Model compatibility (SLM support)
+
+- **Prompt styles** — `model.promptStyle: 'default' | 'minimal'`. The `minimal` variant is shorter and more schema-explicit for small models (≤ 7B). Set via `SEPIA_PROMPT_STYLE=minimal`.
+- **JSON mode** — `model.jsonMode: boolean` adds `response_format: {type: "json_object"}` to model calls for models that require it. Set via `SEPIA_JSON_MODE=true`.
+- **JSON repair and retry** — `repairJson()` in the agent strips markdown code fences and trailing commas before retrying parse failures. Up to `agent.maxRetries` attempts per step.
+- **Message history sliding window** — `agent.maxHistorySteps` (default: 10) keeps the last N user/assistant pairs in context so long tasks don't overflow small context windows.
+- **Token estimation fallback** — `model.tokenEstimation: 'api' | 'local' | 'auto'`. In `auto` mode (default), uses API-reported token counts; falls back to the serializer's `estimateTokens()` heuristic when a local model returns `null` usage.
+
+#### Training and fine-tuning
+
+- **`training/index.ts`** — New module. `exportToShareGPT()` and `exportToAlpaca()` convert `RunTrace[]` to JSONL training datasets. `parseTraceJSONL()` deserializes trace files. Skips failed runs and steps with `secretsRedacted: true`.
+- **`make export-traces`** — Makefile target: `make export-traces TRACE_FILE=traces.jsonl OUT_DIR=out/training` writes `sharegpt.jsonl` and `alpaca.jsonl`.
+
+#### LiteLLM integration
+
+- **`docs/litellm.md`** — Full integration guide: quickstart, config file reference, fallback chains, model names, JSON mode for SLMs, cost tracking, Kubernetes sidecar, Ollama load balancing.
+- **`config/litellm.yaml`** — Example LiteLLM proxy config (Anthropic, OpenAI, Ollama, Groq).
+- **`make litellm-start` / `make litellm-stop`** — Start/stop the LiteLLM Docker proxy using `config/litellm.yaml`.
+- **Helm sidecar** — `helm/sepia/values.yaml` and `templates/deployment.yaml` updated with `litellm.enabled`, `litellm.image`, `litellm.port`, `litellm.configSecret`, `litellm.defaultModel`. When enabled, Sepia's `SEPIA_MODEL_ENDPOINT` is automatically overridden to `http://localhost:4000/v1`.
+
 ---
 
 ## [0.1.0] — 2026-07-21
