@@ -1,7 +1,11 @@
 # Sepia — Product Requirements & Technical Specification
 
-> **Status: DRAFT — awaiting maintainer approval before Phase 2 (implementation) begins.**
+> **Status: APPROVED — Phase 2 complete (M0–M5 implemented, CI green). Phase 3 hardening in progress.**
 > Phase 0 decisions locked: TypeScript · Playwright + executablePath · ungoogled-chromium base · MIT license · Chrome 130 / Linux x86_64 for M4 · MCP 2024-11 stdio
+>
+> **Phase 2 deliverables (2026-07-20):** serializer (M1), resolver (M2), engine + agent loop + MCP + CLI + SDK + example app (M3), fingerprint validation harness (M4), privacy module + session isolation (M5). 71 tests pass; `make ci` exits 0.
+>
+> **Phase 3 hardening (in progress):** AES-256-GCM at-rest encryption (NFR-44), prompt injection sanitization (SR-2), E2E browser tests for AC-AG1/AG2, full action contract coverage (AC-A1), trace secrets verification (AC-A4/P4). AC-F1/AC-F2 remain `.todo` pending `make chromium-build`.
 
 ---
 

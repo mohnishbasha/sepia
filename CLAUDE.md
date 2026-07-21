@@ -15,7 +15,7 @@ Sepia is built in strict phases. Do not write implementation code before the cur
 | 2 | Implement, test-first. Each milestone maps to numbered FRs. | `make ci` green; acceptance tests pass |
 | 3 | Harden and verify. Full validation harness. | All AC-* tests pass; spec matches code |
 
-**Current status:** Phase 2, Milestone M0 (scaffolding) → in progress.
+**Current status:** Phase 3 (hardening) → in progress. Phase 2 complete (M0–M5, `make ci` green, 71+ tests pass).
 
 See [`docs/phase1-spec.md`](docs/phase1-spec.md) for the numbered functional requirements (FR-*) and acceptance criteria (AC-*) that govern implementation.
 

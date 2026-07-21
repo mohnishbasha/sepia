@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login</title>
+</head>
+<body>
+  <main>
+    <h1>Sign in to your account</h1>
+    <form id="login-form" novalidate>
+      <div>
+        <label for="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          aria-label="Email"
+          autocomplete="email"
+          placeholder="you@example.com"
+        />
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          aria-label="Password"
+          autocomplete="current-password"
+          placeholder="password"
+        />
+      </div>
+      <div>
+        <button type="submit">Sign in</button>
+      </div>
+    </form>
+    <section id="result" style="display:none;" aria-label="Login result">
+      <h2>Logged in successfully!</h2>
+      <p>Welcome back.</p>
+    </section>
+  </main>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      document.getElementById('login-form').style.display = 'none';
+      var result = document.getElementById('result');
+      result.style.display = 'block';
+    });
+  </script>
+</body>
+</html>

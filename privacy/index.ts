@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -175,4 +175,99 @@ export function wrapWithAuditor<T extends Record<string, unknown>>(
       };
     },
   });
+}
+
+// ─── AES-256-GCM encryption (NFR-44 / FR-44) ────────────────────────────────
+
+export interface EncryptedData {
+  iv: string;         // hex-encoded 12-byte IV
+  ciphertext: string; // hex-encoded ciphertext
+  authTag: string;    // hex-encoded 16-byte auth tag
+}
+
+/**
+ * Encrypt plaintext with AES-256-GCM.
+ * key must be a 32-byte Buffer.
+ */
+export function encryptData(plaintext: string, key: Buffer): EncryptedData {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([
+    cipher.update(plaintext, 'utf8'),
+    cipher.final(),
+  ]);
+  const authTag = cipher.getAuthTag();
+  return {
+    iv: iv.toString('hex'),
+    ciphertext: encrypted.toString('hex'),
+    authTag: authTag.toString('hex'),
+  };
+}
+
+/**
+ * Decrypt AES-256-GCM encrypted data.
+ * key must be a 32-byte Buffer.
+ * Throws if authentication tag verification fails.
+ */
+export function decryptData(encrypted: EncryptedData, key: Buffer): string {
+  const iv = Buffer.from(encrypted.iv, 'hex');
+  const ciphertext = Buffer.from(encrypted.ciphertext, 'hex');
+  const authTag = Buffer.from(encrypted.authTag, 'hex');
+  const decipher = createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
+/**
+ * Generate a random 32-byte AES-256 key.
+ */
+export function generateKey(): Buffer {
+  return randomBytes(32);
+}
+
+// ─── Prompt injection sanitization (SR-2) ────────────────────────────────────
+
+export interface SanitizeResult {
+  sanitized: string;
+  injectionDetected: boolean;
+  patternsFound: string[];
+}
+
+// Patterns that indicate prompt injection attempts in page content
+const INJECTION_PATTERNS: Array<[RegExp, string]> = [
+  [/SYSTEM:/gi, 'SYSTEM: directive'],
+  [/You are (?:now |a |an )/gi, 'role-override'],
+  [/Ignore (?:all )?(?:previous|prior) instructions/gi, 'instruction-override'],
+  [/\[INST\]/gi, 'llama-inst-tag'],
+  [/<\|(?:im_start|im_end|system|user|assistant)\|>/gi, 'chat-template-token'],
+  [/###\s*(?:System|Instruction)/gi, 'markdown-system-header'],
+  [/Act as(?:\s+an?)?\s+/gi, 'act-as-override'],
+];
+
+/**
+ * Sanitize text before sending to LLM. Strips content that resembles prompt injection.
+ * Called on compact view content before it enters the LLM context.
+ */
+export function sanitizeForLLM(text: string): SanitizeResult {
+  let sanitized = text;
+  const patternsFound: string[] = [];
+
+  for (const [pattern, label] of INJECTION_PATTERNS) {
+    const before = sanitized;
+    sanitized = sanitized.replace(pattern, (match) => {
+      return '[' + match.replace(/./g, '*') + ']';
+    });
+    if (sanitized !== before) {
+      patternsFound.push(label);
+    }
+  }
+
+  return {
+    sanitized,
+    injectionDetected: patternsFound.length > 0,
+    patternsFound,
+  };
 }

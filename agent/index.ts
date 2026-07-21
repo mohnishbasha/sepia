@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { createEngine } from '../engine/index.js';
 import type { EngineOptions } from '../engine/index.js';
 import { parseAction, dispatch } from '../actions/index.js';
-import { createAuditor, redactSecrets } from '../privacy/index.js';
+import { createAuditor, redactSecrets, sanitizeForLLM } from '../privacy/index.js';
 import { createLogger } from '../telemetry/index.js';
 import type { ActionResult } from '../types/index.js';
 import type { Outcome } from '../types/index.js';
@@ -139,7 +139,26 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
           }
 
           // Build user message
-          const userContent = `Goal: ${goal}\n\nCurrent page:\n${formatCompactView(view)}`;
+          // Format and sanitize page content before inserting into LLM context (SR-2)
+          const rawPageContent = formatCompactView(view);
+          const { sanitized: safePageContent, injectionDetected } = sanitizeForLLM(rawPageContent);
+          const userContent = `Goal: ${goal}\n\nCurrent page:\n${safePageContent}`;
+
+          if (injectionDetected) {
+            logger.step({
+              timestamp: Date.now(),
+              sessionId,
+              runId,
+              stepN,
+              action: 'observe',
+              confidence: 0,
+              tokensUsed: 0,
+              latencyMs: 0,
+              ok: true,
+              errorCode: 'PROMPT_INJECTION_DETECTED',
+            });
+          }
+
           const userMsg: OpenAI.Chat.ChatCompletionMessageParam = {
             role: 'user',
             content: userContent,
