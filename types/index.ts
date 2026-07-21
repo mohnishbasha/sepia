@@ -17,9 +17,7 @@ export type ErrorCode =
   | 'UNKNOWN';
 
 export type WaitConditionType =
-  | { type: 'url'; pattern: string }
-  | { type: 'element'; handle: string }
-  | { type: 'networkIdle' };
+  { type: 'url'; pattern: string } | { type: 'element'; handle: string } | { type: 'networkIdle' };
 
 export type Outcome = 'success' | 'budget_exceeded' | 'error' | 'stale_bail';
 

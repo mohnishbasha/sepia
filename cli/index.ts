@@ -81,6 +81,7 @@ function serveCommand(args: string[]): void {
   const modelEndpoint = process.env['SEPIA_MODEL_ENDPOINT'] ?? 'https://api.anthropic.com/v1';
   const modelName = process.env['SEPIA_MODEL'] ?? 'claude-sonnet-4-6';
   const apiKey = process.env['SEPIA_API_KEY'];
+  const serverApiKey = process.env['SEPIA_SERVER_API_KEY'];
 
   const config = mergeConfig({
     model: {
@@ -91,7 +92,7 @@ function serveCommand(args: string[]): void {
     },
   });
 
-  startServer({ port, maxConcurrent, config });
+  startServer({ port, maxConcurrent, config, ...(serverApiKey ? { serverApiKey } : {}) });
 }
 
 async function main(): Promise<void> {

@@ -19,14 +19,48 @@ export interface Logger {
   error: (message: string, meta?: Record<string, unknown>) => void;
 }
 
-export function createLogger(opts?: { verbose?: boolean; enabled?: boolean }): Logger {
+// Emit a single JSON log line to stderr. Used when SEPIA_LOG_FORMAT=json.
+function emitJson(level: string, message: string, meta?: Record<string, unknown>): void {
+  process.stderr.write(JSON.stringify({ ts: Date.now(), level, message, ...meta }) + '\n');
+}
+
+export function createLogger(opts?: {
+  verbose?: boolean;
+  enabled?: boolean;
+  format?: 'text' | 'json';
+}): Logger {
   const enabled = opts?.enabled ?? false;
   const verbose = opts?.verbose ?? false;
+  const format = opts?.format ?? (process.env['SEPIA_LOG_FORMAT'] === 'json' ? 'json' : 'text');
 
   const noop = () => undefined;
 
   if (!enabled) {
     return { step: noop, info: noop, warn: noop, error: noop };
+  }
+
+  if (format === 'json') {
+    return {
+      step: (event) => {
+        if (verbose) {
+          emitJson('step', `action=${event.action}`, {
+            stepN: event.stepN,
+            action: event.action,
+            handle: event.handle,
+            confidence: event.confidence,
+            tokensUsed: event.tokensUsed,
+            latencyMs: event.latencyMs,
+            ok: event.ok,
+            errorCode: event.errorCode,
+            sessionId: event.sessionId,
+            runId: event.runId,
+          });
+        }
+      },
+      info: (msg, meta) => emitJson('info', msg, meta),
+      warn: (msg, meta) => emitJson('warn', msg, meta),
+      error: (msg, meta) => emitJson('error', msg, meta),
+    };
   }
 
   return {

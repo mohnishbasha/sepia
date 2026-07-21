@@ -2,7 +2,12 @@ import OpenAI from 'openai';
 import { createEngine } from '../engine/index.js';
 import type { EngineOptions } from '../engine/index.js';
 import { parseAction, dispatch } from '../actions/index.js';
-import { createAuditor, redactSecrets, sanitizeForLLM } from '../privacy/index.js';
+import {
+  createAuditor,
+  redactSecrets,
+  sanitizeForLLM,
+  createNamedProfile,
+} from '../privacy/index.js';
 import { createLogger } from '../telemetry/index.js';
 import { estimateTokens } from '../serializer/index.js';
 import type { ActionResult } from '../types/index.js';
@@ -150,6 +155,10 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
       };
       if (config.browser.executablePath !== undefined) {
         engineOpts.executablePath = config.browser.executablePath;
+      }
+      if (!config.browser.ephemeral && config.browser.profileStorePath !== undefined) {
+        const profile = createNamedProfile(sessionId, config.browser.profileStorePath);
+        engineOpts.profileDir = profile.profileDir;
       }
       const engine = await createEngine(engineOpts);
 

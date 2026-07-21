@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { serialize } from '../serializer/index.js';
 import type { AXSnapshot } from '../serializer/index.js';
@@ -110,7 +110,8 @@ async function getAXSnapshot(page: Page): Promise<AXSnapshot | null> {
 
       for (const prop of node.properties ?? []) {
         const v = prop.value?.value;
-        if (prop.name === 'checked') result.checked = v === true || v === 'true' ? true : v === 'mixed' ? 'mixed' : false;
+        if (prop.name === 'checked')
+          result.checked = v === true || v === 'true' ? true : v === 'mixed' ? 'mixed' : false;
         else if (prop.name === 'disabled') result.disabled = v === true || v === 'true';
         else if (prop.name === 'required') result.required = v === true || v === 'true';
         else if (prop.name === 'expanded') result.expanded = v === true || v === 'true';
@@ -135,31 +136,33 @@ async function getAXSnapshot(page: Page): Promise<AXSnapshot | null> {
 
 // Engine factory — Phase 2 M3
 export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
-  const launchOpts: Parameters<typeof chromium.launch>[0] = {
-    headless: opts?.headless ?? true,
-  };
-  if (opts?.executablePath !== undefined) {
-    launchOpts.executablePath = opts.executablePath;
-  }
-  // Chromium's sandbox requires SYS_ADMIN or user namespaces, which are
-  // unavailable in most container runtimes. Detect container via /.dockerenv
-  // or the explicit opt-out env var and add the required flags.
+  const headless = opts?.headless ?? true;
   const inContainer = existsSync('/.dockerenv') || process.env['SEPIA_NO_SANDBOX'] === '1';
-  if (inContainer) {
-    launchOpts.args = ['--no-sandbox', '--disable-setuid-sandbox'];
-  }
-
-  const browser: Browser = await chromium.launch(launchOpts);
+  const sandboxArgs = inContainer ? ['--no-sandbox', '--disable-setuid-sandbox'] : [];
 
   const contextOpts: Parameters<Browser['newContext']>[0] = {};
-  if (opts?.userAgent !== undefined) {
-    contextOpts.userAgent = opts.userAgent;
-  }
-  if (opts?.viewport !== undefined) {
-    contextOpts.viewport = opts.viewport;
+  if (opts?.userAgent !== undefined) contextOpts.userAgent = opts.userAgent;
+  if (opts?.viewport !== undefined) contextOpts.viewport = opts.viewport;
+
+  let browser: Browser | undefined;
+  let context: BrowserContext;
+
+  if (opts?.profileDir !== undefined) {
+    // Persistent context: cookies, localStorage, and IndexedDB survive across runs.
+    mkdirSync(opts.profileDir, { recursive: true });
+    context = await chromium.launchPersistentContext(opts.profileDir, {
+      headless,
+      args: sandboxArgs,
+      ...(opts.executablePath !== undefined ? { executablePath: opts.executablePath } : {}),
+      ...contextOpts,
+    });
+  } else {
+    const launchOpts: Parameters<typeof chromium.launch>[0] = { headless, args: sandboxArgs };
+    if (opts?.executablePath !== undefined) launchOpts.executablePath = opts.executablePath;
+    browser = await chromium.launch(launchOpts);
+    context = await browser.newContext(contextOpts);
   }
 
-  const context: BrowserContext = await browser.newContext(contextOpts);
   const page: Page = await context.newPage();
 
   // Per-engine handle map — reset on navigation to new origin
@@ -634,7 +637,12 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     },
 
     async close(): Promise<void> {
-      await browser.close();
+      // Persistent context has no separate Browser object; closing the context is enough.
+      if (browser !== undefined) {
+        await browser.close();
+      } else {
+        await context.close();
+      }
     },
   };
 }

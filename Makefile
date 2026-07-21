@@ -13,7 +13,7 @@ export TMPDIR
         run-example lint fmt fmt-check typecheck security ci clean \
         patch chromium-build patch-check \
         docker-build docker-run docker-push \
-        helm-lint helm-package helm-install helm-uninstall \
+        helm-lint helm-package helm-install helm-uninstall helm-test \
         litellm-start litellm-stop export-traces
 
 # ── Help ──────────────────────────────────────────────────────────────────────
@@ -159,6 +159,10 @@ HELM_CHART    := helm/sepia
 helm-lint: ## Lint and template-render the Helm chart
 	helm lint $(HELM_CHART)
 	helm template $(HELM_RELEASE) $(HELM_CHART) --namespace $(HELM_NS) | kubectl apply --dry-run=client -f -
+
+helm-test: ## Run helm-unittest chart tests (installs plugin if needed)
+	@helm plugin list | grep -q unittest || helm plugin install https://github.com/helm-unittest/helm-unittest
+	helm unittest $(HELM_CHART)
 
 helm-package: ## Package the Helm chart into a .tgz
 	helm package $(HELM_CHART) --destination dist/

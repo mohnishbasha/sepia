@@ -107,6 +107,16 @@ export function createSessionProfile(): SessionProfile {
   return { profileDir, id: randomUUID() };
 }
 
+/**
+ * Create or reuse a named persistent profile in storePath/name/.
+ * Cookies, localStorage, and other browser state survive between runs.
+ */
+export function createNamedProfile(name: string, storePath: string): SessionProfile {
+  const profileDir = path.join(storePath, name);
+  fs.mkdirSync(profileDir, { recursive: true });
+  return { profileDir, id: name };
+}
+
 export function cleanupProfile(profile: SessionProfile): void {
   if (!fs.existsSync(profile.profileDir)) return;
   fs.rmSync(profile.profileDir, { recursive: true, force: true });

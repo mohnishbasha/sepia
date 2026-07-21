@@ -105,24 +105,24 @@ Requirements are numbered FR-N. Every FR must trace to at least one acceptance t
 
 ### 2.3 Action API (Component 3)
 
-| ID    | Requirement                                                                                                                                                                                                                                       |
+| ID | Requirement |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------- |
-| FR-17 | `click(handle)` — clicks the resolved element. Returns `ActionResult`.                                                                                                                                                                            |
-| FR-18 | `type(handle, text, opts?: {submit?: boolean})` — types text into the element. If `submit=true`, triggers form submit after typing. Returns `ActionResult`.                                                                                       |
-| FR-19 | `select(handle, option)` — selects an option in a `combobox` or `select` element. `option` matched by visible text or value. Returns `ActionResult`.                                                                                              |
-| FR-20 | `check(handle, checked: boolean)` — checks or unchecks a checkbox or radio. Returns `ActionResult`.                                                                                                                                               |
-| FR-21 | `hover(handle)` — moves pointer over element. Returns `ActionResult`.                                                                                                                                                                             |
+| FR-17 | `click(handle)` — clicks the resolved element. Returns `ActionResult`. |
+| FR-18 | `type(handle, text, opts?: {submit?: boolean})` — types text into the element. If `submit=true`, triggers form submit after typing. Returns `ActionResult`. |
+| FR-19 | `select(handle, option)` — selects an option in a `combobox` or `select` element. `option` matched by visible text or value. Returns `ActionResult`. |
+| FR-20 | `check(handle, checked: boolean)` — checks or unchecks a checkbox or radio. Returns `ActionResult`. |
+| FR-21 | `hover(handle)` — moves pointer over element. Returns `ActionResult`. |
 | FR-22 | `scroll(target: 'up'                                                                                                                                                                                                                              | 'down' | handle, distance?: number)`— scrolls the page or scrolls element into view. Returns`ActionResult`. |
-| FR-23 | `press(key: string)` — sends a keyboard event. Key names follow Playwright conventions. Returns `ActionResult`.                                                                                                                                   |
-| FR-24 | `read(handle)` — returns the full visible text or value of a single node (for nodes the compact view truncated). Returns `{ok, text, error?}`.                                                                                                    |
-| FR-25 | `observe(opts?: {verbosity?})` — returns the current `CompactView`.                                                                                                                                                                               |
+| FR-23 | `press(key: string)` — sends a keyboard event. Key names follow Playwright conventions. Returns `ActionResult`. |
+| FR-24 | `read(handle)` — returns the full visible text or value of a single node (for nodes the compact view truncated). Returns `{ok, text, error?}`. |
+| FR-25 | `observe(opts?: {verbosity?})` — returns the current `CompactView`. |
 | FR-26 | `wait(condition: WaitCondition, timeoutMs?: number)` — waits for a condition. `WaitCondition` is a discriminated union: `{type: 'url', pattern: string}`, `{type: 'element', handle: string}`, `{type: 'networkIdle'}`. Returns `{ok, timedOut}`. |
-| FR-27 | `open(url: string)` — navigates to URL. Validates URL is http/https; rejects file://, data://, javascript:. Returns `ActionResult`.                                                                                                               |
-| FR-28 | `back()`, `forward()` — navigate browser history. Return `ActionResult`.                                                                                                                                                                          |
-| FR-29 | `tabs.new(url?)`, `tabs.close(id?)`, `tabs.list()`, `tabs.switch(id)` — tab management. Return typed results.                                                                                                                                     |
-| FR-30 | Every action MUST be validated against the typed action enum before dispatch. Model output is never `eval`d; actions are dispatched only via the typed dispatch table.                                                                            |
-| FR-31 | Every action MUST refuse dispatch if the target handle is `stale`. Return `ActionResult` with `error.code = 'STALE_HANDLE'`.                                                                                                                      |
-| FR-32 | Every action MUST be logged as a structured, replayable event with secrets redacted before logging.                                                                                                                                               |
+| FR-27 | `open(url: string)` — navigates to URL. Validates URL is http/https; rejects file://, data://, javascript:. Returns `ActionResult`. |
+| FR-28 | `back()`, `forward()` — navigate browser history. Return `ActionResult`. |
+| FR-29 | `tabs.new(url?)`, `tabs.close(id?)`, `tabs.list()`, `tabs.switch(id)` — tab management. Return typed results. |
+| FR-30 | Every action MUST be validated against the typed action enum before dispatch. Model output is never `eval`d; actions are dispatched only via the typed dispatch table. |
+| FR-31 | Every action MUST refuse dispatch if the target handle is `stale`. Return `ActionResult` with `error.code = 'STALE_HANDLE'`. |
+| FR-32 | Every action MUST be logged as a structured, replayable event with secrets redacted before logging. |
 
 ### 2.4 Anti-detection / Fingerprint (Component 4)
 

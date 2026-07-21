@@ -1,0 +1,42 @@
+suite: service template
+templates:
+  - templates/service.yaml
+
+tests:
+  - it: renders a Service
+    asserts:
+      - isKind:
+          of: Service
+
+  - it: defaults to ClusterIP type
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+
+  - it: exposes port 3000 by default
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 3000
+
+  - it: targets the http named port
+    asserts:
+      - equal:
+          path: spec.ports[0].targetPort
+          value: http
+
+  - it: allows overriding service type to LoadBalancer
+    set:
+      service.type: LoadBalancer
+    asserts:
+      - equal:
+          path: spec.type
+          value: LoadBalancer
+
+  - it: sets selector labels matching the deployment
+    asserts:
+      - isNotEmpty:
+          path: spec.selector
+      - exists:
+          path: spec.selector["app.kubernetes.io/name"]

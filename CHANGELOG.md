@@ -9,7 +9,25 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] — 2026-07-21
+
 ### Added
+
+#### Observability
+
+- **Structured JSON logging** — `createLogger()` now accepts `format: 'json'` (or set `SEPIA_LOG_FORMAT=json`). In JSON mode every log line is a newline-delimited JSON object `{ts, level, message, ...meta}` compatible with log aggregation pipelines (Loki, Datadog, CloudWatch, etc.). Default format remains human-readable text.
+- **`GET /metrics` endpoint** — HTTP server now exposes `/metrics` returning `{ok, uptimeMs, inflight, maxConcurrent, totalRequests, totalErrors}`. No auth required (metrics are not sensitive); suitable for Prometheus scraping via a sidecar or simple health monitors.
+
+#### Auth / multi-tenancy
+
+- **HTTP server API key** — Set `SEPIA_SERVER_API_KEY` to require `Authorization: Bearer <key>` on `POST /run`. Returns `401 UNAUTHORIZED` when the key is set and the header is missing or wrong. When the env var is unset, the server remains open (backward compatible). The upstream model key (`SEPIA_API_KEY`) is unaffected.
+
+#### Session persistence
+
+- **`browser.profileStorePath`** config field — When `browser.ephemeral: false` and `browser.profileStorePath` is set, each agent run reuses a named Chromium profile directory (`<storePath>/<sessionId>/`) across runs. Cookies, localStorage, IndexedDB, and service-worker registrations survive between sessions. Implemented via `chromium.launchPersistentContext()`.
+- **`createNamedProfile(name, storePath)`** — New export from `privacy/index.ts`. Creates or reuses `storePath/name/` and returns it as a `SessionProfile`.
 
 #### Model compatibility (SLM support)
 
@@ -30,6 +48,25 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`config/litellm.yaml`** — Example LiteLLM proxy config (Anthropic, OpenAI, Ollama, Groq).
 - **`make litellm-start` / `make litellm-stop`** — Start/stop the LiteLLM Docker proxy using `config/litellm.yaml`.
 - **Helm sidecar** — `helm/sepia/values.yaml` and `templates/deployment.yaml` updated with `litellm.enabled`, `litellm.image`, `litellm.port`, `litellm.configSecret`, `litellm.defaultModel`. When enabled, Sepia's `SEPIA_MODEL_ENDPOINT` is automatically overridden to `http://localhost:4000/v1`.
+
+#### Helm chart testing
+
+- **`helm/sepia/tests/`** — `helm unittest` test suite for all three chart templates (Deployment, Service, HPA). 20 test cases covering: image defaults, port exposure, health probe paths, replica/HPA interaction, sandbox flag injection, secret key ref wiring, LiteLLM sidecar toggling, and volume mounts.
+- **`make helm-test`** — Runs `helm unittest` (installs the plugin if not present).
+- **CI** — New `helm` job in `.github/workflows/ci.yml` runs `helm lint` + `helm unittest` on every push and PR. Added to the CI gate.
+
+### Changed
+
+- **`GET /health`** — `version` field bumped to `0.2.0`.
+- **Docker** publish pipeline now triggers on `v*` tag pushes (was already wired; `v0.1.0` is the first tag that will trigger it).
+
+### Infrastructure
+
+- Node 24.18.0, Playwright 1.61.1 (Chrome 149), TypeScript 5.9.3, vitest 3.2.7
+- CDP AX snapshot migration (`engine/index.ts`): replaced removed `page.accessibility.snapshot()` with `Accessibility.getFullAXTree` via CDP
+- `chrome-149-linux-x86_64` fingerprint preset for Playwright 1.61 headless shell coherence tests
+- Pre-commit hook (husky + lint-staged): ESLint + Prettier on staged files
+- All GitHub Actions SHAs updated to Node-24-compatible versions
 
 ---
 
@@ -87,5 +124,6 @@ Initial public release. Covers Phase 2 (M0–M5 implementation) and Phase 3 (har
 
 ---
 
-[Unreleased]: https://github.com/mohnishbasha/sepia/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mohnishbasha/sepia/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mohnishbasha/sepia/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mohnishbasha/sepia/releases/tag/v0.1.0

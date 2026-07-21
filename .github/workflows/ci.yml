@@ -146,6 +146,28 @@ jobs:
       - name: Dependency audit (fail on critical CVEs)
         run: pnpm audit --audit-level=critical
 
+  # ── Helm: chart lint + unit tests ──────────────────────────────────────────
+  helm:
+    name: Helm lint + unittest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Helm
+        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112  # v4.3.0
+
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest
+
+      - name: Helm lint
+        run: helm lint helm/sepia
+
+      - name: Helm unittest
+        run: helm unittest helm/sepia
+
   # ── Dependency review (PRs only) ────────────────────────────────────────────
   # Blocks merging when a PR adds a dependency with a known vulnerability.
   dependency-review:
@@ -168,7 +190,7 @@ jobs:
   # required jobs above pass, giving a single stable check name to pin.
   ci:
     name: CI gate
-    needs: [quality, build, test, security]
+    needs: [quality, build, test, security, helm]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: always()
@@ -179,7 +201,7 @@ jobs:
           results='${{ toJSON(needs) }}'
           echo "Job results: $results"
           failed=0
-          for job in quality build test security; do
+          for job in quality build test security helm; do
             result=$(echo "$results" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['$job']['result'])")
             echo "  $job → $result"
             if [ "$result" != "success" ]; then

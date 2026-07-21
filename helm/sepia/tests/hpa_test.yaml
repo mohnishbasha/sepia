@@ -1,0 +1,52 @@
+suite: HPA template
+templates:
+  - templates/hpa.yaml
+
+tests:
+  - it: renders an HPA when enabled (default)
+    asserts:
+      - isKind:
+          of: HorizontalPodAutoscaler
+
+  - it: uses autoscaling/v2
+    asserts:
+      - equal:
+          path: apiVersion
+          value: autoscaling/v2
+
+  - it: sets default minReplicas to 1
+    asserts:
+      - equal:
+          path: spec.minReplicas
+          value: 1
+
+  - it: sets default maxReplicas to 10
+    asserts:
+      - equal:
+          path: spec.maxReplicas
+          value: 10
+
+  - it: sets default CPU target to 70%
+    asserts:
+      - equal:
+          path: spec.metrics[0].resource.target.averageUtilization
+          value: 70
+
+  - it: renders nothing when hpa.enabled is false
+    set:
+      hpa.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: allows overriding replica bounds
+    set:
+      hpa.minReplicas: 2
+      hpa.maxReplicas: 20
+    asserts:
+      - equal:
+          path: spec.minReplicas
+          value: 2
+      - equal:
+          path: spec.maxReplicas
+          value: 20

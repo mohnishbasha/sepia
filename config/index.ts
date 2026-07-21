@@ -21,6 +21,8 @@ export interface BrowserConfig {
   headless: boolean;
   ephemeral: boolean;
   humanTiming: boolean;
+  /** Directory where named persistent profiles are stored. Required when ephemeral=false. */
+  profileStorePath?: string;
 }
 
 export interface AgentConfig {

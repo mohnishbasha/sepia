@@ -1,0 +1,124 @@
+suite: deployment template
+templates:
+  - templates/deployment.yaml
+
+tests:
+  - it: renders a Deployment
+    asserts:
+      - isKind:
+          of: Deployment
+
+  - it: uses the chart appVersion as default image tag
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "ghcr.io/mohnishbasha/sepia:.+"
+
+  - it: exposes port 3000
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 3000
+
+  - it: sets liveness probe on /health
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /health
+
+  - it: sets readiness probe on /health
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /health
+
+  - it: does not set replicas when hpa is enabled (default)
+    asserts:
+      - notExists:
+          path: spec.replicas
+
+  - it: sets replicas when hpa is disabled
+    set:
+      hpa.enabled: false
+      replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+
+  - it: injects SEPIA_NO_SANDBOX when chromium.noSandbox is true
+    set:
+      chromium.noSandbox: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SEPIA_NO_SANDBOX
+            value: "1"
+
+  - it: does not inject SEPIA_NO_SANDBOX when chromium.noSandbox is false
+    set:
+      chromium.noSandbox: false
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SEPIA_NO_SANDBOX
+            value: "1"
+
+  - it: injects secret key ref when existingSecret is set
+    set:
+      existingSecret: sepia-credentials
+      existingSecretKey: SEPIA_API_KEY
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SEPIA_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: sepia-credentials
+                key: SEPIA_API_KEY
+
+  - it: does not add a litellm sidecar by default
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.containers
+          count: 1
+
+  - it: adds litellm sidecar when litellm.enabled is true
+    set:
+      litellm.enabled: true
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.containers
+          count: 2
+      - equal:
+          path: spec.template.spec.containers[1].name
+          value: litellm
+
+  - it: overrides SEPIA_MODEL_ENDPOINT when litellm is enabled
+    set:
+      litellm.enabled: true
+      litellm.port: 4000
+      litellm.defaultModel: anthropic/claude-sonnet-4-6
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SEPIA_MODEL_ENDPOINT
+            value: "http://localhost:4000/v1"
+
+  - it: mounts litellm config volume when configSecret is set
+    set:
+      litellm.enabled: true
+      litellm.configSecret: litellm-config
+    asserts:
+      - isNotEmpty:
+          path: spec.volumes
+      - contains:
+          path: spec.volumes
+          content:
+            name: litellm-config
+            secret:
+              secretName: litellm-config
