@@ -6,6 +6,8 @@
 > **Phase 2 deliverables (2026-07-20):** serializer (M1), resolver (M2), engine + agent loop + MCP + CLI + SDK + example app (M3), fingerprint validation harness (M4), privacy module + session isolation (M5). 71 tests pass; `make ci` exits 0.
 >
 > **Phase 3 hardening (in progress):** AES-256-GCM at-rest encryption (NFR-44), prompt injection sanitization (SR-2), E2E browser tests for AC-AG1/AG2, full action contract coverage (AC-A1), trace secrets verification (AC-A4/P4). AC-F1/AC-F2 remain `.todo` pending `make chromium-build`.
+>
+> See [`docs/phase3-addendum.md`](phase3-addendum.md) for the full AC-* coverage matrix, Phase 3 deliverables, deferred items, and new API exports. Details are kept there to avoid cluttering this document.
 
 ---
 
