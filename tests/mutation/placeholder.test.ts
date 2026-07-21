@@ -32,9 +32,10 @@ function loadFixture(name: string): MutationFixture {
  * Given a fixture, assigns handles to `before` nodes and returns a map of
  * node name → assigned handle.
  */
-function assignHandlesAndBuildNameMap(
-  fixture: MutationFixture,
-): { nameToHandle: Map<string, string>; map: ReturnType<typeof createHandleMap> } {
+function assignHandlesAndBuildNameMap(fixture: MutationFixture): {
+  nameToHandle: Map<string, string>;
+  map: ReturnType<typeof createHandleMap>;
+} {
   const map = createHandleMap();
   const processedBefore = processNodes(fixture.before, map);
 

@@ -4,7 +4,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { chromium } from 'playwright';
 import type { Browser, Page } from 'playwright';
-import { getPreset, validateCoherence, validateAndStart, PRESETS } from '../../fingerprint/index.js';
+import {
+  getPreset,
+  validateCoherence,
+  validateAndStart,
+  PRESETS,
+} from '../../fingerprint/index.js';
 import type { CoherenceCheckResult } from '../../fingerprint/index.js';
 
 // ── Unit tests (no browser) ───────────────────────────────────────────────────
@@ -113,9 +118,7 @@ describe('fingerprint — browser tests', () => {
     }
 
     // JA3/JA4 checks are present but informational (no patched binary in CI)
-    const tlsChecks = result.checks.filter(
-      (c) => c.name.includes('JA3') || c.name.includes('JA4'),
-    );
+    const tlsChecks = result.checks.filter((c) => c.name.includes('JA3') || c.name.includes('JA4'));
     expect(tlsChecks.length).toBeGreaterThanOrEqual(2);
     for (const check of tlsChecks) {
       expect(check.details).toMatch(/patched Chromium/i);
@@ -136,8 +139,6 @@ describe('fingerprint — browser tests', () => {
     await expect(validateAndStart(badPreset, page)).rejects.toThrowError(
       /Fingerprint coherence failed/,
     );
-    await expect(validateAndStart(badPreset, page)).rejects.toThrowError(
-      /navigator\.vendor/,
-    );
+    await expect(validateAndStart(badPreset, page)).rejects.toThrowError(/navigator\.vendor/);
   }, 30_000);
 });

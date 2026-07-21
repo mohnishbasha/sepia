@@ -45,6 +45,7 @@ make run-example QUERIES="TypeScript generics" 2>telemetry.log | jq .
 ```
 
 **stdout:**
+
 ```json
 {
   "queries": [
@@ -61,6 +62,7 @@ make run-example QUERIES="TypeScript generics" 2>telemetry.log | jq .
 ```
 
 **stderr (per-step telemetry):**
+
 ```
 [research-assistant] 1 queries, concurrency=1
 [research-assistant] starting: "TypeScript generics"

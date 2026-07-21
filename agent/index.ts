@@ -92,14 +92,16 @@ function generateId(): string {
 
 // Attempt to repair common SLM JSON formatting errors before giving up.
 function repairJson(raw: string): string {
-  return raw
-    .trim()
-    // Strip markdown code fences
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/, '')
-    // Trailing commas before } or ]
-    .replace(/,\s*([}\]])/g, '$1')
-    .trim();
+  return (
+    raw
+      .trim()
+      // Strip markdown code fences
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '')
+      // Trailing commas before } or ]
+      .replace(/,\s*([}\]])/g, '$1')
+      .trim()
+  );
 }
 
 // Sliding window: keep only the last N (user + assistant) pairs plus the system prompt.
@@ -179,7 +181,11 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
               confidence: 0,
               tokensUsed: 0,
               latencyMs: Date.now() - stepStart,
-              result: { ok: false, confidence: 0, error: { code: 'UNKNOWN', message: String(err) } },
+              result: {
+                ok: false,
+                confidence: 0,
+                error: { code: 'UNKNOWN', message: String(err) },
+              },
               secretsRedacted: false,
             });
             break;
@@ -192,9 +198,16 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
 
           if (injectionDetected) {
             logger.step({
-              timestamp: Date.now(), sessionId, runId, stepN,
-              action: 'observe', confidence: 0, tokensUsed: 0, latencyMs: 0,
-              ok: true, errorCode: 'PROMPT_INJECTION_DETECTED',
+              timestamp: Date.now(),
+              sessionId,
+              runId,
+              stepN,
+              action: 'observe',
+              confidence: 0,
+              tokensUsed: 0,
+              latencyMs: 0,
+              ok: true,
+              errorCode: 'PROMPT_INJECTION_DETECTED',
             });
           }
 
@@ -238,7 +251,11 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
                 confidence: 0,
                 tokensUsed: 0,
                 latencyMs: Date.now() - stepStart,
-                result: { ok: false, confidence: 0, error: { code: 'TIMEOUT', message: String(err) } },
+                result: {
+                  ok: false,
+                  confidence: 0,
+                  error: { code: 'TIMEOUT', message: String(err) },
+                },
                 secretsRedacted: false,
               });
               break;
@@ -310,7 +327,11 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             try {
               result = await dispatch(typedAction, engine);
             } catch (err) {
-              result = { ok: false, confidence: 0, error: { code: 'UNKNOWN', message: String(err) } };
+              result = {
+                ok: false,
+                confidence: 0,
+                error: { code: 'UNKNOWN', message: String(err) },
+              };
             }
 
             const actionResult = result as ActionResult;
@@ -353,8 +374,14 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
           steps.push(stepTrace);
 
           const stepEvent: Parameters<typeof logger.step>[0] = {
-            timestamp: Date.now(), sessionId, runId, stepN,
-            action: typedAction.action, confidence, tokensUsed, latencyMs,
+            timestamp: Date.now(),
+            sessionId,
+            runId,
+            stepN,
+            action: typedAction.action,
+            confidence,
+            tokensUsed,
+            latencyMs,
             ok: (result as ActionResult).ok ?? true,
           };
           if (typedAction.handle !== undefined) stepEvent.handle = typedAction.handle;
@@ -387,9 +414,15 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
       }
 
       return {
-        runId, goal, sessionId, startMs,
-        endMs: Date.now(), outcome,
-        totalSteps: steps.length, totalTokens, steps,
+        runId,
+        goal,
+        sessionId,
+        startMs,
+        endMs: Date.now(),
+        outcome,
+        totalSteps: steps.length,
+        totalTokens,
+        steps,
       };
     },
   };

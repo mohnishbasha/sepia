@@ -244,9 +244,7 @@ function walkAX(
  * Apply minimal verbosity filter: keep only interactive nodes and headings.
  */
 function applyMinimalFilter(nodes: CompactNode[]): CompactNode[] {
-  return nodes.filter(
-    (n) => n.handle !== undefined || n.role === 'heading',
-  );
+  return nodes.filter((n) => n.handle !== undefined || n.role === 'heading');
 }
 
 /**
@@ -268,9 +266,7 @@ function domFallbackWalk(
 
   if ((role === 'generic' || role === 'unknown') && name !== '') {
     // Check if this node is already represented (by name match)
-    const alreadyCovered = existingNodes.some(
-      (n) => n.name.toLowerCase() === name.toLowerCase(),
-    );
+    const alreadyCovered = existingNodes.some((n) => n.name.toLowerCase() === name.toLowerCase());
     if (!alreadyCovered) {
       counter[0]++;
       const handle = `e${counter[0]}`;

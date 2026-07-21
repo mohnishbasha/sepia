@@ -3,7 +3,7 @@
 > **Build status (2026-07-20): Complete.**
 > Phase 0 (reasoning), Phase 1 (spec), Phase 2 (M0–M5 implementation), and Phase 3 (hardening) are all done.
 > `make ci` exits 0. 96 tests pass; 2 intentional todos (AC-F1/AC-F2 require `make chromium-build`).
-> See [`docs/phase3-addendum.md`](docs/phase3-addendum.md) for the full AC-* coverage matrix.
+> See [`docs/phase3-addendum.md`](docs/phase3-addendum.md) for the full AC-\* coverage matrix.
 > This prompt is preserved as a historical artifact of how the project was initiated.
 
 ---
@@ -17,6 +17,7 @@
 **Sepia** — an open-source, secure AI browser engine. A user (or an upstream LLM) describes a goal in plain language; Sepia **finds** the right page state, **acts** on it, and **scales** the workflow across pages and sessions, privately. It is designed as an agent-grade browser: it exposes a compact, token-efficient view of each page and accepts actions by **stable handle** rather than brittle selector.
 
 Optimize for three hard constraints, in priority order:
+
 1. **Low token footprint per page** for the LLM in the loop (target: compact view ~750 tokens vs ~8,700+ for raw DOM).
 2. **Action stability** across layout shifts and re-renders.
 3. **Undetectability and coherence** at the network/TLS layer, not just headers.
@@ -32,15 +33,19 @@ Naming convention: display name `Sepia`; machine form `sepia` everywhere (repo, 
 Follow these phases strictly and do not skip ahead:
 
 ### Phase 0 — Reason and plan (no code)
+
 Before writing anything, think through the problem end to end and produce a short written analysis:
+
 - Restate the goal in your own words and list the hard constraints and their tradeoffs.
 - Identify the riskiest unknowns (fingerprint coherence, handle stability under mutation, token budget) and how you'll de-risk each.
 - Outline the component boundaries and the data flow between them.
 - List assumptions explicitly and flag anything that needs a decision from the maintainer (e.g. CDP vs Playwright driver; patch-on-fork Chromium vs existing hardened base).
-Stop and surface open questions here rather than guessing.
+  Stop and surface open questions here rather than guessing.
 
 ### Phase 1 — Product specification (no implementation code)
-Produce a **Product Requirements & Technical Specification** document *first*, and get it approved before implementation. It must capture:
+
+Produce a **Product Requirements & Technical Specification** document _first_, and get it approved before implementation. It must capture:
+
 - **Product requirements:** user personas, primary use cases, plain-language goal examples, and explicit non-goals.
 - **Functional requirements:** every capability as a numbered, testable requirement (e.g. "FR-12: `click(handle)` returns `{ok, viewDelta, confidence}` and never acts on a `stale` handle").
 - **Non-functional requirements:** performance/token budgets, latency targets, reliability targets, resource limits, concurrency.
@@ -49,15 +54,17 @@ Produce a **Product Requirements & Technical Specification** document *first*, a
 - **Acceptance criteria:** for each functional area, the measurable condition that means "done," expressed so it can become an automated test.
 - **Architecture:** component diagram, chosen stack with justification, and the Chromium patch strategy.
 - **Milestones:** ordered, each with its own acceptance tests.
-Only after this spec is reviewed and approved do you proceed to Phase 2.
+  Only after this spec is reviewed and approved do you proceed to Phase 2.
 
 ### Phase 2 — Implement, test-first
+
 - Implement in small, reviewable increments mapped to the numbered requirements.
 - **Write tests before or alongside the code** (unit, integration, and the specific mutation/fingerprint/token test suites described below). No feature is "done" without passing tests traceable to its acceptance criteria.
 - Keep the serializer/handle-resolver layers deterministic and LLM-free so they are fully testable.
 - Every PR-sized change includes tests, updates the spec if behavior changed, and passes lint + type checks + security scan in CI.
 
 ### Phase 3 — Harden and verify
+
 - Run the full validation harness (token budget, mutation stability, fingerprint coherence, data-boundary audit) before declaring any milestone complete.
 - Document how to reproduce each acceptance test.
 
@@ -116,7 +123,7 @@ Rules: every action returns `{ok, viewDelta, confidence, error?}`. Prefer emitti
 Header patching is insufficient; the real tells are the **TLS ClientHello (JA3/JA4)** and cross-signal inconsistency. Control fingerprints in the network stack, not after the fact.
 
 - Patch the network layer (BoringSSL/ClientHello construction) so the **JA3/JA4 fingerprint matches a real, current Chrome build** for the spoofed profile — cipher suites, extensions, and their order internally consistent.
-- Keep the **whole profile coherent as one unit**: TLS fingerprint, User-Agent, Client Hints, WebGL/Canvas, fonts, timezone, locale, screen metrics, Accept-* headers must all describe the *same* plausible machine. Mismatch between any two is the actual detection vector.
+- Keep the **whole profile coherent as one unit**: TLS fingerprint, User-Agent, Client Hints, WebGL/Canvas, fonts, timezone, locale, screen metrics, Accept-* headers must all describe the *same\* plausible machine. Mismatch between any two is the actual detection vector.
 - Remove automation leaks: no `navigator.webdriver`, no CDP-runtime artifacts, consistent `chrome` runtime object.
 - Optional human-plausible timing layer (typing cadence, pointer pathing, jitter).
 - Ship a small set of **verified profile presets** and a **validation harness** that checks the assembled profile against known probes (JA3/JA4 echo, header-order, JS-environment audits) before a session is considered "clean."
@@ -138,6 +145,7 @@ Header patching is insufficient; the real tells are the **TLS ClientHello (JA3/J
 ## Component 6 — Natural-language agent loop
 
 Plan → observe → act → verify:
+
 1. Parse the plain-language goal into a task.
 2. `observe()` the compact view.
 3. Model chooses one action by handle.
@@ -215,12 +223,14 @@ LICENSE
 ```
 
 Rules:
+
 - **One responsibility per module**, communicating through typed contracts, not shared mutable state.
 - **Core stays LLM-free:** `serializer`, `resolver`, `actions`, `engine`, `fingerprint`, `privacy` contain no model calls and are unit-testable in isolation.
 - **No upward dependencies:** lower layers never import the agent. The action layer never `eval`s model text; it validates against the fixed action enum.
 - `tests/` mirrors the module tree so every module has a colocated test package, plus the specialized suites (token-budget, mutation, fingerprint-coherence, cross-profile-leak, data-boundary, resilience).
 
 ### Version pinning (applies to every module and to scaffolding)
+
 - **Pin to exact, latest stable versions.** Every dependency in every module and in the scaffolding (toolchain, build tools, linters, test frameworks, CI actions, base images) is pinned to an exact version, and that version is the **latest stable release** available at adoption time. No floating ranges (`^`, `~`, `*`, `latest`) and no pre-release/alpha/beta/RC/nightly builds unless a required capability forces it, in which case document the exception inline.
 - **Commit lockfiles** for every package so builds are byte-reproducible across machines and CI.
 - **Single source of truth for shared versions.** Where multiple modules share a dependency, pin it once (workspace/root manifest or a versions catalog) so the whole repo moves together and versions cannot drift between modules.
@@ -234,7 +244,9 @@ Rules:
 Generate all of these; they are part of the deliverable, not optional.
 
 ### Makefile
+
 A single entry point for every common task, so contributors and CI run identical commands. Include at minimum:
+
 - `make setup` / `make install` — install toolchain and dependencies (pinned).
 - `make build` — build the project and, where applicable, the Chromium patch set.
 - `make run ARGS="..."` — run the CLI locally (e.g. `make run ARGS='run "book a table for 2"'`).
@@ -244,10 +256,12 @@ A single entry point for every common task, so contributors and CI run identical
 - `make security` — SAST + SCA (dependency vulnerability scan); fails on known-critical findings.
 - `make ci` — the exact gate CI runs (build + lint + typecheck + test + security).
 - `make clean`.
-Keep targets thin wrappers over real scripts; document each in `make help`.
+  Keep targets thin wrappers over real scripts; document each in `make help`.
 
 ### README.md
+
 The front door. Must contain, in this order:
+
 - Header lockup: **Sepia** / descriptor "An open-source secure AI browser engine" / tagline "Describe it. Sepia finds it, acts on it, scales it, privately."
 - Badges (build, tests, license, security scan).
 - **What it is / why it's different** — a short opener built around the three differentiators: token-efficient compact view, stable handles that survive layout shifts, source-level fingerprint coherence.
@@ -258,7 +272,9 @@ The front door. Must contain, in this order:
 - Links to CLAUDE.md, SKILLS.md, CONTRIBUTING.md, SECURITY.md, and the license.
 
 ### CLAUDE.md
-Operating guide for AI coding agents (and humans) working *in* the repo. Must state:
+
+Operating guide for AI coding agents (and humans) working _in_ the repo. Must state:
+
 - The **phase workflow** (reason -> spec -> test-first implement -> harden) and that implementation code is not written before the spec is approved.
 - **Naming convention:** display `Sepia`, machine form `sepia` everywhere.
 - **Module boundaries and the one-way dependency rule**; the core-stays-LLM-free invariant.
@@ -268,9 +284,11 @@ Operating guide for AI coding agents (and humans) working *in* the repo. Must st
 - Where the spec, fixtures, and patch set live.
 
 ### SKILLS.md
+
 Catalog of Sepia's **agent skills/capabilities** — the reusable, parameterized tasks the browser can perform (e.g. `login`, `search-and-extract`, `fill-form`, `paginate-collect`, `scale-across-inputs`). For each skill document: purpose, inputs/outputs, the actions it composes, preconditions, failure/`stale`-handling behavior, and an example invocation. Include a short **"How to add a new skill"** section defining the contract a new skill must satisfy (typed I/O, deterministic where possible, test required) so the catalog stays extensible without touching the core.
 
 ### How to build and run
+
 Provide explicit, reproducible instructions in both the README (human-facing) and the Makefile (executable). Cover: prerequisites and versions, one-command setup, building the engine/patch set, running the CLI against a sample goal, running with a local vs hosted model, and running the test and security suites. A new contributor should go from clone to a passing `make ci` and a working `make run` using only these docs.
 
 ---

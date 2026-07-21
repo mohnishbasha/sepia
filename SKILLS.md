@@ -22,14 +22,16 @@ A skill must satisfy this contract before it can be added to the catalog:
 **Purpose:** Authenticate to a web service using stored credentials.
 
 **Inputs:**
+
 ```typescript
 interface LoginInput {
-  url: string;          // login page URL
+  url: string; // login page URL
   credentialKey: string; // key in the encrypted credential store
 }
 ```
 
 **Outputs:**
+
 ```typescript
 interface LoginOutput {
   ok: boolean;
@@ -44,6 +46,7 @@ interface LoginOutput {
 **Preconditions:** Credentials exist in the encrypted profile store under `credentialKey`.
 
 **Failure handling:**
+
 - `stale` on the submit button → re-observe, retry up to `maxRetries`.
 - No password field found → return `ok: false, error: 'PASSWORD_FIELD_NOT_FOUND'`.
 - Budget exhausted → return `ok: false, error: 'BUDGET_EXCEEDED'`.
@@ -51,6 +54,7 @@ interface LoginOutput {
 **E2E test coverage (Phase 3):** `tests/integration/e2e.test.ts` — AC-AG1. Runs against `fixtures/pages/login.html` using a real Playwright Chromium browser. Verifies the full action sequence (open → observe → type email → type password → click "Sign in" → observe success heading).
 
 **Example invocation:**
+
 ```typescript
 const result = await agent.run('Sign in to app.example.com using my stored credentials');
 ```
@@ -62,15 +66,17 @@ const result = await agent.run('Sign in to app.example.com using my stored crede
 **Purpose:** Submit a search query and return the first N results as structured data.
 
 **Inputs:**
+
 ```typescript
 interface SearchInput {
-  url: string;       // search page URL
-  query: string;     // search term
+  url: string; // search page URL
+  query: string; // search term
   maxResults: number; // how many results to return (default: 5)
 }
 ```
 
 **Outputs:**
+
 ```typescript
 interface SearchOutput {
   ok: boolean;
@@ -85,13 +91,17 @@ interface SearchOutput {
 **Preconditions:** The target page has a visible search input field.
 
 **Failure handling:**
+
 - No search box found → return `ok: false, error: 'SEARCH_BOX_NOT_FOUND'`.
 - Zero results → return `ok: true, results: []`.
 - `stale` on search box → re-observe, retry.
 
 **Example invocation:**
+
 ```typescript
-const result = await agent.run('Search for "TypeScript async patterns" on MDN and return the first 3 results');
+const result = await agent.run(
+  'Search for "TypeScript async patterns" on MDN and return the first 3 results',
+);
 ```
 
 ---
@@ -101,6 +111,7 @@ const result = await agent.run('Search for "TypeScript async patterns" on MDN an
 **Purpose:** Fill a multi-field form and optionally submit it.
 
 **Inputs:**
+
 ```typescript
 interface FillFormInput {
   url: string;
@@ -110,6 +121,7 @@ interface FillFormInput {
 ```
 
 **Outputs:**
+
 ```typescript
 interface FillFormOutput {
   ok: boolean;
@@ -124,15 +136,17 @@ interface FillFormOutput {
 **Preconditions:** All field labels exist as accessible names on the page.
 
 **Failure handling:**
+
 - Field not found by label → skip and log warning; return `ok: false` if `submit: true` and required field was skipped.
 - Submit button stale → re-observe, retry.
 
 **E2E test coverage (Phase 3):** `tests/integration/e2e.test.ts` — AC-AG2. Runs against `fixtures/pages/form.html` using a real Playwright Chromium browser. Verifies the full action sequence (open → observe → type name → type email → type message → click "Submit" → observe success heading).
 
 **Example invocation:**
+
 ```typescript
 const result = await agent.run(
-  'Fill in the contact form: name="Alice", email="alice@example.com", message="Hello" and submit'
+  'Fill in the contact form: name="Alice", email="alice@example.com", message="Hello" and submit',
 );
 ```
 
@@ -143,15 +157,17 @@ const result = await agent.run(
 **Purpose:** Collect data across multiple pages of paginated results.
 
 **Inputs:**
+
 ```typescript
 interface PaginateInput {
   url: string;
-  extractGoal: string;   // what to extract from each page
-  maxPages: number;       // hard cap (default: 10)
+  extractGoal: string; // what to extract from each page
+  maxPages: number; // hard cap (default: 10)
 }
 ```
 
 **Outputs:**
+
 ```typescript
 interface PaginateOutput {
   ok: boolean;
@@ -166,6 +182,7 @@ interface PaginateOutput {
 **Preconditions:** The page has a "Next" or equivalent pagination control with an accessible name.
 
 **Failure handling:**
+
 - No "Next" button → stop, return `stopped: 'no_next'`.
 - Budget exhausted → return `stopped: 'budget'`.
 - `stale` on Next → re-observe, retry once, then stop.
@@ -177,15 +194,17 @@ interface PaginateOutput {
 **Purpose:** Run the same parameterized task across N inputs or URLs concurrently.
 
 **Inputs:**
+
 ```typescript
 interface ScaleInput {
-  goalTemplate: string;   // e.g. "Search for {{query}} and return the first result"
+  goalTemplate: string; // e.g. "Search for {{query}} and return the first result"
   inputs: Array<Record<string, string>>;
-  concurrency: number;    // max concurrent sessions (default: 5, max: 10)
+  concurrency: number; // max concurrent sessions (default: 5, max: 10)
 }
 ```
 
 **Outputs:**
+
 ```typescript
 interface ScaleOutput {
   ok: boolean;
@@ -199,10 +218,12 @@ interface ScaleOutput {
 **Preconditions:** `concurrency` ≤ 10 (enforced; above this returns validation error).
 
 **Failure handling:**
+
 - Individual run failure → record in `results` with `outcome: 'error'`, continue other runs.
 - Session pool exhausted → queue remaining inputs; process as sessions free up.
 
 **Example invocation** (via research-assistant example):
+
 ```bash
 make run-example QUERIES="TypeScript generics,Rust ownership,Go channels"
 ```

@@ -29,12 +29,8 @@ describe('cross-profile (placeholder)', () => {
     expect(fs.existsSync(profileB.profileDir)).toBe(true);
 
     // IDs are non-empty strings (UUID format)
-    expect(profileA.id).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-    );
-    expect(profileB.id).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-    );
+    expect(profileA.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(profileB.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 
   it('concurrent sessions share no filesystem state (AC-P3b)', () => {

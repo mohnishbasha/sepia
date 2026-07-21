@@ -4,12 +4,12 @@ Sepia patches Chromium at the source level to achieve coherent, undetectable bro
 
 ## Patch stack
 
-| File | Purpose |
-|---|---|
-| `001-ungoogled-chromium.patch` | Strip Google integrations (sourced from ungoogled-chromium project) |
-| `002-rebrowser.patch` | Remove CDP/WebDriver automation detection artifacts |
-| `003-boring-ssl-ja3.patch` | BoringSSL ClientHello construction — cipher suite order matches Chrome 130 on Linux x86_64 |
-| `004-profile-coherence.patch` | UA string, Client Hints, canvas noise removal, WebGL renderer string, font enumeration |
+| File                           | Purpose                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `001-ungoogled-chromium.patch` | Strip Google integrations (sourced from ungoogled-chromium project)                        |
+| `002-rebrowser.patch`          | Remove CDP/WebDriver automation detection artifacts                                        |
+| `003-boring-ssl-ja3.patch`     | BoringSSL ClientHello construction — cipher suite order matches Chrome 130 on Linux x86_64 |
+| `004-profile-coherence.patch`  | UA string, Client Hints, canvas noise removal, WebGL renderer string, font enumeration     |
 
 Apply order is strict: 001 → 002 → 003 → 004.
 
@@ -45,7 +45,7 @@ When a new Chromium major version is adopted:
 2. Rebase each `.patch` file against the new ungoogled-chromium tag.
 3. Run `make patch-check` to verify clean application.
 4. Update `patches/VERSION` with the new tag.
-5. Run `make test-fingerprint` — all AC-F* tests must pass with the new build.
+5. Run `make test-fingerprint` — all AC-F\* tests must pass with the new build.
 6. Open a PR with the rebased patches and updated VERSION.
 
 ## Maintenance policy

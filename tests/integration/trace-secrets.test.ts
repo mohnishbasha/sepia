@@ -66,10 +66,13 @@ describe('AC-A4 / AC-P4 — trace secrets redaction', () => {
 
     vi.mocked(createEngine).mockResolvedValue(mockEngine);
 
-    const mockCreate = vi.fn()
+    const mockCreate = vi
+      .fn()
       // Step 1: type the secret
       .mockResolvedValueOnce({
-        choices: [{ message: { content: JSON.stringify({ action: 'type', handle: 'e1', text: SECRET }) } }],
+        choices: [
+          { message: { content: JSON.stringify({ action: 'type', handle: 'e1', text: SECRET }) } },
+        ],
         usage: { total_tokens: 100 },
       })
       // Step 2: done
@@ -78,14 +81,29 @@ describe('AC-A4 / AC-P4 — trace secrets redaction', () => {
         usage: { total_tokens: 50 },
       });
 
-    vi.mocked(OpenAI).mockImplementation(() => ({
-      chat: { completions: { create: mockCreate } },
-    }) as unknown as InstanceType<typeof OpenAI>);
+    vi.mocked(OpenAI).mockImplementation(
+      () =>
+        ({
+          chat: { completions: { create: mockCreate } },
+        }) as unknown as InstanceType<typeof OpenAI>,
+    );
 
     const config = {
-      model: { endpoint: 'https://api.anthropic.com/v1', model: 'test', apiKey: 'test', maxTokensPerStep: 10000 },
+      model: {
+        endpoint: 'https://api.anthropic.com/v1',
+        model: 'test',
+        apiKey: 'test',
+        maxTokensPerStep: 10000,
+      },
       browser: { profile: 'default', headless: true, ephemeral: true, humanTiming: false },
-      agent: { maxSteps: 10, maxTokensPerRun: 100_000, verbosity: 'standard' as const, retryBackoffMs: 0, maxRetries: 0, confidenceThreshold: 0.7 },
+      agent: {
+        maxSteps: 10,
+        maxTokensPerRun: 100_000,
+        verbosity: 'standard' as const,
+        retryBackoffMs: 0,
+        maxRetries: 0,
+        confidenceThreshold: 0.7,
+      },
       privacy: { telemetry: false },
       security: { robotsAwareness: false },
     };
@@ -93,9 +111,12 @@ describe('AC-A4 / AC-P4 — trace secrets redaction', () => {
     const trace = await createAgent(config).run('type password');
 
     // Find the type step
-    const typeStep = trace.steps.find(s => s.action === 'type');
+    const typeStep = trace.steps.find((s) => s.action === 'type');
     expect(typeStep, 'type step should exist').toBeDefined();
-    expect(typeStep!.secretsRedacted, 'secretsRedacted must be true when sk- prefixed secret is typed').toBe(true);
+    expect(
+      typeStep!.secretsRedacted,
+      'secretsRedacted must be true when sk- prefixed secret is typed',
+    ).toBe(true);
   });
 
   it('password string does not appear in JSON-serialized RunTrace (AC-P4)', async () => {
@@ -131,9 +152,12 @@ describe('AC-A4 / AC-P4 — trace secrets redaction', () => {
 
     vi.mocked(createEngine).mockResolvedValue(mockEngine);
 
-    const mockCreate = vi.fn()
+    const mockCreate = vi
+      .fn()
       .mockResolvedValueOnce({
-        choices: [{ message: { content: JSON.stringify({ action: 'type', handle: 'e1', text: SECRET }) } }],
+        choices: [
+          { message: { content: JSON.stringify({ action: 'type', handle: 'e1', text: SECRET }) } },
+        ],
         usage: { total_tokens: 80 },
       })
       .mockResolvedValueOnce({
@@ -141,14 +165,29 @@ describe('AC-A4 / AC-P4 — trace secrets redaction', () => {
         usage: { total_tokens: 40 },
       });
 
-    vi.mocked(OpenAI).mockImplementation(() => ({
-      chat: { completions: { create: mockCreate } },
-    }) as unknown as InstanceType<typeof OpenAI>);
+    vi.mocked(OpenAI).mockImplementation(
+      () =>
+        ({
+          chat: { completions: { create: mockCreate } },
+        }) as unknown as InstanceType<typeof OpenAI>,
+    );
 
     const config = {
-      model: { endpoint: 'https://api.anthropic.com/v1', model: 'test', apiKey: 'test', maxTokensPerStep: 10000 },
+      model: {
+        endpoint: 'https://api.anthropic.com/v1',
+        model: 'test',
+        apiKey: 'test',
+        maxTokensPerStep: 10000,
+      },
       browser: { profile: 'default', headless: true, ephemeral: true, humanTiming: false },
-      agent: { maxSteps: 10, maxTokensPerRun: 100_000, verbosity: 'standard' as const, retryBackoffMs: 0, maxRetries: 0, confidenceThreshold: 0.7 },
+      agent: {
+        maxSteps: 10,
+        maxTokensPerRun: 100_000,
+        verbosity: 'standard' as const,
+        retryBackoffMs: 0,
+        maxRetries: 0,
+        confidenceThreshold: 0.7,
+      },
       privacy: { telemetry: false },
       security: { robotsAwareness: false },
     };

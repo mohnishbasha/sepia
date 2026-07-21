@@ -1,9 +1,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { createEngine } from '../../engine/index.js';
 import type { EngineOptions } from '../../engine/index.js';
 import type { SepiaConfig } from '../../config/index.js';
@@ -21,7 +18,10 @@ const TOOL_DEFINITIONS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        url: { type: 'string', description: 'The URL to navigate to (must be http:// or https://)' },
+        url: {
+          type: 'string',
+          description: 'The URL to navigate to (must be http:// or https://)',
+        },
       },
       required: ['url'],
     },
@@ -147,10 +147,7 @@ const TOOL_DEFINITIONS = [
 
 // MCP 2024-11 server — Phase 2 M3
 export async function startMcpServer(opts: McpServerOptions): Promise<void> {
-  const server = new Server(
-    { name: 'sepia', version: '0.1.0' },
-    { capabilities: { tools: {} } },
-  );
+  const server = new Server({ name: 'sepia', version: '0.1.0' }, { capabilities: { tools: {} } });
 
   // Create a shared engine instance for the session
   const engineOpts: EngineOptions = {
@@ -191,11 +188,9 @@ export async function startMcpServer(opts: McpServerOptions): Promise<void> {
           break;
         }
         case 'type': {
-          result = await engine.type(
-            String(params['handle'] ?? ''),
-            String(params['text'] ?? ''),
-            { submit: Boolean(params['submit']) },
-          );
+          result = await engine.type(String(params['handle'] ?? ''), String(params['text'] ?? ''), {
+            submit: Boolean(params['submit']),
+          });
           break;
         }
         case 'select': {
@@ -206,10 +201,7 @@ export async function startMcpServer(opts: McpServerOptions): Promise<void> {
           break;
         }
         case 'check': {
-          result = await engine.check(
-            String(params['handle'] ?? ''),
-            params['checked'] !== false,
-          );
+          result = await engine.check(String(params['handle'] ?? ''), params['checked'] !== false);
           break;
         }
         case 'hover': {

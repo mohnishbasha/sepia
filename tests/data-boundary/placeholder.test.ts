@@ -4,7 +4,12 @@ import { createAuditor, wrapWithAuditor, redactSecrets } from '../../privacy/ind
 describe('data-boundary', () => {
   it('auditor records outbound payloads', () => {
     const auditor = createAuditor();
-    auditor.record({ destination: 'api.anthropic.com', byteCount: 1024, fields: ['compactView', 'goal'], timestampMs: Date.now() });
+    auditor.record({
+      destination: 'api.anthropic.com',
+      byteCount: 1024,
+      fields: ['compactView', 'goal'],
+      timestampMs: Date.now(),
+    });
     const report = auditor.report(1);
     expect(report.outbound[0]).toBeDefined();
     expect(report.outbound[0]?.destination).toBe('api.anthropic.com');
@@ -12,7 +17,12 @@ describe('data-boundary', () => {
 
   it('auditor resets cleanly', () => {
     const auditor = createAuditor();
-    auditor.record({ destination: 'api.anthropic.com', byteCount: 512, fields: ['compactView'], timestampMs: Date.now() });
+    auditor.record({
+      destination: 'api.anthropic.com',
+      byteCount: 512,
+      fields: ['compactView'],
+      timestampMs: Date.now(),
+    });
     auditor.reset();
     const report = auditor.report(2);
     expect(report.outbound).toHaveLength(0);

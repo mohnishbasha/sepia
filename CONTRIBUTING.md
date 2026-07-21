@@ -14,11 +14,11 @@ make ci             # verify CI gate passes
 
 ## Workflow
 
-1. **Check the spec first.** Every change must trace to a numbered requirement (FR-*, NFR-*, AC-*) in [`docs/phase1-spec.md`](docs/phase1-spec.md). If your change falls outside the spec, propose a spec update first.
+1. **Check the spec first.** Every change must trace to a numbered requirement (FR-_, NFR-_, AC-\*) in [`docs/phase1-spec.md`](docs/phase1-spec.md). If your change falls outside the spec, propose a spec update first.
 
 2. **Read CLAUDE.md.** The [CLAUDE.md](CLAUDE.md) operating guide lists hard invariants (no eval, fail closed, secrets never in logs). These are non-negotiable.
 
-3. **Write the test first (or alongside the code).** No feature merges without tests traceable to an AC-* criterion.
+3. **Write the test first (or alongside the code).** No feature merges without tests traceable to an AC-\* criterion.
 
 4. **Keep the deterministic core LLM-free.** `types`, `config`, `serializer`, `resolver`, `fingerprint`, `privacy`, `telemetry`, and `engine` must never import from `agent` or make model API calls.
 
@@ -27,7 +27,7 @@ make ci             # verify CI gate passes
 ## Pull request checklist
 
 - [ ] `make ci` passes locally (build + lint + typecheck + test + security)
-- [ ] New/changed behavior has tests referencing FR-* or AC-* numbers
+- [ ] New/changed behavior has tests referencing FR-_ or AC-_ numbers
 - [ ] `docs/phase1-spec.md` updated if behavior changed
 - [ ] No new `@typescript-eslint/no-explicit-any` warnings without justification
 - [ ] Secrets are not committed (check `.gitignore` covers your additions)

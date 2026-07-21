@@ -175,7 +175,9 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
       }
     },
 
-    async observe(observeOpts?: { verbosity?: 'minimal' | 'standard' | 'full' }): Promise<CompactView> {
+    async observe(observeOpts?: {
+      verbosity?: 'minimal' | 'standard' | 'full';
+    }): Promise<CompactView> {
       await settle();
       const rawSnap = await page.accessibility.snapshot();
       const snap = toAXSnapshot(rawSnap as PlaywrightAXNode | null);
@@ -217,7 +219,10 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
         return { ok: true, confidence: resolveResult.confidence };
       } catch (err) {
         try {
-          await page.locator(`[aria-label="${fp.accessibleName}"]`).first().click({ timeout: 5000 });
+          await page
+            .locator(`[aria-label="${fp.accessibleName}"]`)
+            .first()
+            .click({ timeout: 5000 });
           return { ok: true, confidence: resolveResult.confidence * 0.8 };
         } catch {
           return {
@@ -233,7 +238,11 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
       }
     },
 
-    async type(handle: string, text: string, typeOpts?: { submit?: boolean }): Promise<ActionResult> {
+    async type(
+      handle: string,
+      text: string,
+      typeOpts?: { submit?: boolean },
+    ): Promise<ActionResult> {
       const { view } = await getView();
       const resolveResult = resolveHandle(handle, view.nodes, handleMap);
       if (resolveResult.stale) {
@@ -379,9 +388,13 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
       const delta = distance ?? 300;
       try {
         if (target === 'up') {
-          await page.evaluate((d: number) => { (globalThis as unknown as { scrollBy: (x: number, y: number) => void }).scrollBy(0, -d); }, delta);
+          await page.evaluate((d: number) => {
+            (globalThis as unknown as { scrollBy: (x: number, y: number) => void }).scrollBy(0, -d);
+          }, delta);
         } else if (target === 'down') {
-          await page.evaluate((d: number) => { (globalThis as unknown as { scrollBy: (x: number, y: number) => void }).scrollBy(0, d); }, delta);
+          await page.evaluate((d: number) => {
+            (globalThis as unknown as { scrollBy: (x: number, y: number) => void }).scrollBy(0, d);
+          }, delta);
         } else {
           const { view } = await getView();
           const resolveResult = resolveHandle(target, view.nodes, handleMap);

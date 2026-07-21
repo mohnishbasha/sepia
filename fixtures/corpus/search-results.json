@@ -102,5 +102,11 @@
       }
     ]
   },
-  "groundTruth": ["Search", "Results", "TypeScript Handbook", "TypeScript Deep Dive", "TypeScript Playground"]
+  "groundTruth": [
+    "Search",
+    "Results",
+    "TypeScript Handbook",
+    "TypeScript Deep Dive",
+    "TypeScript Playground"
+  ]
 }

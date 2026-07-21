@@ -61,7 +61,9 @@ export const PRESETS: Record<string, ProfilePreset> = {
 export function getPreset(id: string): ProfilePreset {
   const preset = PRESETS[id];
   if (!preset) {
-    throw new Error(`Unknown fingerprint preset: ${id}. Available: ${Object.keys(PRESETS).join(', ')}`);
+    throw new Error(
+      `Unknown fingerprint preset: ${id}. Available: ${Object.keys(PRESETS).join(', ')}`,
+    );
   }
   return preset;
 }
@@ -116,9 +118,7 @@ export async function validateCoherence(
   });
 
   // passed = true only when ALL non-JA3/JA4 checks pass
-  const nonTlsChecks = checks.filter(
-    (c) => !c.name.includes('JA3') && !c.name.includes('JA4'),
-  );
+  const nonTlsChecks = checks.filter((c) => !c.name.includes('JA3') && !c.name.includes('JA4'));
   const passed = nonTlsChecks.every((c) => c.passed);
 
   return { passed, checks };
@@ -127,9 +127,7 @@ export async function validateCoherence(
 // validateAndStart: throws if any non-JA3/JA4 coherence check fails
 export async function validateAndStart(preset: ProfilePreset, page: unknown): Promise<void> {
   const result = await validateCoherence(preset, page);
-  const fatalFailures = result.checks.filter(
-    (c) => !c.passed && !c.name.includes('JA'),
-  );
+  const fatalFailures = result.checks.filter((c) => !c.passed && !c.name.includes('JA'));
   if (fatalFailures.length > 0) {
     throw new Error(
       `Fingerprint coherence failed: ${fatalFailures

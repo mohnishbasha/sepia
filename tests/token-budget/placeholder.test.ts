@@ -106,14 +106,15 @@ describe('token-budget', () => {
 
       let covered = 0;
       for (const expected of fixture.groundTruth) {
-        const found = nodeNames.some((name) =>
-          name.includes(expected.toLowerCase()),
-        );
+        const found = nodeNames.some((name) => name.includes(expected.toLowerCase()));
         if (found) covered++;
       }
 
       const coverage = covered / fixture.groundTruth.length;
-      expect(coverage, `Coverage for ${file}: ${covered}/${fixture.groundTruth.length}`).toBeGreaterThanOrEqual(0.95);
+      expect(
+        coverage,
+        `Coverage for ${file}: ${covered}/${fixture.groundTruth.length}`,
+      ).toBeGreaterThanOrEqual(0.95);
     }
   });
 
@@ -173,9 +174,7 @@ describe('token-budget', () => {
     const view = serialize(sparseSnapshot, null, { verbosity: 'standard' });
 
     // DOM fallback should have kicked in (< 5 interactive nodes)
-    const submitNode = view.nodes.find(
-      (n) => n.name.toLowerCase() === 'submit',
-    );
+    const submitNode = view.nodes.find((n) => n.name.toLowerCase() === 'submit');
     expect(submitNode).toBeDefined();
     expect(submitNode?.handle).toBeDefined();
   });

@@ -12,14 +12,14 @@ Sepia requires zero code changes to use LiteLLM. You point `SEPIA_MODEL_ENDPOINT
 
 ## When to use LiteLLM
 
-| Need | Without LiteLLM | With LiteLLM |
-|---|---|---|
-| Switch between Anthropic and Ollama | Change env vars and restart | Change one config line in LiteLLM |
-| Cost tracking across providers | Not available | Built-in spend dashboard |
-| Fallback: if Claude fails → use local Llama | Manual retry logic | `model_list` fallback chain |
-| Rate limiting across teams | Not available | Per-key rate limits |
-| Load balance across Ollama replicas | Not available | Round-robin routing |
-| A/B testing two models | Two Sepia instances | One Sepia instance, LiteLLM router |
+| Need                                        | Without LiteLLM             | With LiteLLM                       |
+| ------------------------------------------- | --------------------------- | ---------------------------------- |
+| Switch between Anthropic and Ollama         | Change env vars and restart | Change one config line in LiteLLM  |
+| Cost tracking across providers              | Not available               | Built-in spend dashboard           |
+| Fallback: if Claude fails → use local Llama | Manual retry logic          | `model_list` fallback chain        |
+| Rate limiting across teams                  | Not available               | Per-key rate limits                |
+| Load balance across Ollama replicas         | Not available               | Round-robin routing                |
+| A/B testing two models                      | Two Sepia instances         | One Sepia instance, LiteLLM router |
 
 ---
 
@@ -78,10 +78,10 @@ model_list:
       api_key: os.environ/GROQ_API_KEY
 
 general_settings:
-  master_key: os.environ/LITELLM_MASTER_KEY   # set any string; used as the proxy API key
+  master_key: os.environ/LITELLM_MASTER_KEY # set any string; used as the proxy API key
 
 litellm_settings:
-  drop_params: true   # silently drop unsupported params (e.g. json_mode on Ollama)
+  drop_params: true # silently drop unsupported params (e.g. json_mode on Ollama)
   request_timeout: 60
 ```
 
@@ -108,14 +108,14 @@ With this config Sepia always uses `SEPIA_MODEL=anthropic/claude-sonnet-4-6`. If
 
 When routing through LiteLLM, set `SEPIA_MODEL` to the LiteLLM model name:
 
-| Provider | `SEPIA_MODEL` |
-|---|---|
-| Anthropic Claude Sonnet | `anthropic/claude-sonnet-4-6` |
-| OpenAI GPT-4o | `openai/gpt-4o` |
-| Ollama Hermes 2 | `ollama/nous-hermes2` |
-| Ollama LLaMA 3.1 8B | `ollama/llama3.1` |
-| Groq LLaMA 3.1 70B | `groq/llama-3.1-70b-versatile` |
-| Together AI Mixtral | `together_ai/mistralai/Mixtral-8x7B-Instruct-v0.1` |
+| Provider                | `SEPIA_MODEL`                                      |
+| ----------------------- | -------------------------------------------------- |
+| Anthropic Claude Sonnet | `anthropic/claude-sonnet-4-6`                      |
+| OpenAI GPT-4o           | `openai/gpt-4o`                                    |
+| Ollama Hermes 2         | `ollama/nous-hermes2`                              |
+| Ollama LLaMA 3.1 8B     | `ollama/llama3.1`                                  |
+| Groq LLaMA 3.1 70B      | `groq/llama-3.1-70b-versatile`                     |
+| Together AI Mixtral     | `together_ai/mistralai/Mixtral-8x7B-Instruct-v0.1` |
 
 ---
 
@@ -141,6 +141,7 @@ SEPIA_PROMPT_STYLE=minimal   # shorter, more schema-explicit prompt for ≤ 7B m
 ## Cost tracking
 
 LiteLLM exposes a spend dashboard at `http://localhost:4000/ui`. It tracks:
+
 - Cost per request, per model, per API key
 - Token usage over time
 - Request latency p50/p95/p99
@@ -158,7 +159,7 @@ litellm:
   enabled: true
   image: ghcr.io/berriai/litellm:main-latest
   port: 4000
-  configSecret: litellm-config   # kubectl secret with litellm.yaml key
+  configSecret: litellm-config # kubectl secret with litellm.yaml key
 ```
 
 When enabled, the sidecar runs in the same pod as Sepia. Sepia's `SEPIA_MODEL_ENDPOINT` is automatically set to `http://localhost:4000/v1` and `SEPIA_MODEL` to the value of `litellm.defaultModel`.

@@ -1,4 +1,13 @@
-import type { ErrorCode, WaitConditionType, ActionResult, ActionError, ReadResult, WaitResult, TabInfo, CompactView } from '../types/index.js';
+import type {
+  ErrorCode,
+  WaitConditionType,
+  ActionResult,
+  ActionError,
+  ReadResult,
+  WaitResult,
+  TabInfo,
+  CompactView,
+} from '../types/index.js';
 import type { SepiaEngine } from '../engine/index.js';
 
 // Re-export shared action result types so callers can import from actions/ or types/
@@ -24,9 +33,23 @@ export type ActionName =
   | 'tabs.switch';
 
 export const ACTION_NAMES: Set<ActionName> = new Set([
-  'click', 'type', 'select', 'check', 'hover', 'scroll', 'press',
-  'read', 'observe', 'wait', 'open', 'back', 'forward',
-  'tabs.new', 'tabs.close', 'tabs.list', 'tabs.switch',
+  'click',
+  'type',
+  'select',
+  'check',
+  'hover',
+  'scroll',
+  'press',
+  'read',
+  'observe',
+  'wait',
+  'open',
+  'back',
+  'forward',
+  'tabs.new',
+  'tabs.close',
+  'tabs.list',
+  'tabs.switch',
 ]);
 
 export function isValidActionName(name: string): name is ActionName {

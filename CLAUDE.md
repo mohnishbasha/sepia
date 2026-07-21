@@ -8,27 +8,27 @@ This file is the authoritative operating guide for any AI coding agent (or human
 
 Sepia is built in strict phases. Do not write implementation code before the current phase gate is passed.
 
-| Phase | What happens | Gate |
-|---|---|---|
-| 0 | Reason and plan. Produce `docs/phase0-reasoning.md`. | Maintainer reviews open questions |
-| 1 | Write spec. Produce `docs/phase1-spec.md`. | Maintainer approves spec |
-| 2 | Implement, test-first. Each milestone maps to numbered FRs. | `make ci` green; acceptance tests pass |
-| 3 | Harden and verify. Full validation harness. | All AC-* tests pass; spec matches code |
+| Phase | What happens                                                | Gate                                    |
+| ----- | ----------------------------------------------------------- | --------------------------------------- |
+| 0     | Reason and plan. Produce `docs/phase0-reasoning.md`.        | Maintainer reviews open questions       |
+| 1     | Write spec. Produce `docs/phase1-spec.md`.                  | Maintainer approves spec                |
+| 2     | Implement, test-first. Each milestone maps to numbered FRs. | `make ci` green; acceptance tests pass  |
+| 3     | Harden and verify. Full validation harness.                 | All AC-\* tests pass; spec matches code |
 
-**Current status:** Phase 3 complete. 96 tests passing (2 permanent todos: AC-F1/AC-F2 require `make chromium-build`). See [`docs/phase3-addendum.md`](docs/phase3-addendum.md) for the full AC-* coverage matrix and hardening details.
+**Current status:** Phase 3 complete. 96 tests passing (2 permanent todos: AC-F1/AC-F2 require `make chromium-build`). See [`docs/phase3-addendum.md`](docs/phase3-addendum.md) for the full AC-\* coverage matrix and hardening details.
 
-See [`docs/phase1-spec.md`](docs/phase1-spec.md) for the numbered functional requirements (FR-*) and acceptance criteria (AC-*) that govern implementation.
+See [`docs/phase1-spec.md`](docs/phase1-spec.md) for the numbered functional requirements (FR-_) and acceptance criteria (AC-_) that govern implementation.
 
 ---
 
 ## Naming convention
 
-| Context | Correct form |
-|---|---|
-| Display name | `Sepia` |
-| CLI command | `sepia run "..."` |
-| Package name | `sepia` |
-| Directory names | `sepia/`, `sepia-*` |
+| Context              | Correct form        |
+| -------------------- | ------------------- |
+| Display name         | `Sepia`             |
+| CLI command          | `sepia run "..."`   |
+| Package name         | `sepia`             |
+| Directory names      | `sepia/`, `sepia-*` |
 | All machine contexts | `sepia` (lowercase) |
 
 A lint rule blocks any PR that introduces a casing variant. If you see `Sepia` in code (not prose), fix it.
@@ -94,6 +94,7 @@ make clean          # remove dist/ coverage/
 ```
 
 For the example app:
+
 ```bash
 make run-example QUERIES="TypeScript generics,Rust ownership"
 make test-example
@@ -105,7 +106,7 @@ make test-example
 
 A PR is ready to merge when:
 
-1. **Tests pass and are traceable to requirements.** Every new or changed behavior has at least one automated test that references its FR-* or AC-* number. `make test` is green.
+1. **Tests pass and are traceable to requirements.** Every new or changed behavior has at least one automated test that references its FR-_ or AC-_ number. `make test` is green.
 2. **Spec is updated if behavior changed.** If your change alters an existing FR, AC, or NFR, update `docs/phase1-spec.md` to match.
 3. **CI is green.** `make ci` passes (build + lint + typecheck + test + security).
 4. **No new lint violations.** `make lint` is clean.
@@ -116,21 +117,21 @@ A PR is ready to merge when:
 
 ## Where things live
 
-| Artifact | Location |
-|---|---|
-| Phase 0 reasoning | `docs/phase0-reasoning.md` |
-| Phase 1 spec | `docs/phase1-spec.md` |
-| Phase 3 hardening addendum | `docs/phase3-addendum.md` |
-| Design philosophy | `soul.md` |
-| Skill catalog | `SKILLS.md` |
-| 20-page test corpus | `fixtures/corpus/` |
-| Mutation test cases | `fixtures/mutation/` |
-| Fingerprint probe payloads | `fixtures/fingerprint/` |
-| E2E fixture pages | `fixtures/pages/` |
-| Chromium patch set | `patches/*.patch` |
-| Patched Chromium source | `patches/chromium/` (not committed; see patches/README.md) |
-| Compiled browser binary | `bin/chromium` (not committed; built by `make chromium-build`) |
-| Example app | `examples/research-assistant/` |
+| Artifact                   | Location                                                       |
+| -------------------------- | -------------------------------------------------------------- |
+| Phase 0 reasoning          | `docs/phase0-reasoning.md`                                     |
+| Phase 1 spec               | `docs/phase1-spec.md`                                          |
+| Phase 3 hardening addendum | `docs/phase3-addendum.md`                                      |
+| Design philosophy          | `soul.md`                                                      |
+| Skill catalog              | `SKILLS.md`                                                    |
+| 20-page test corpus        | `fixtures/corpus/`                                             |
+| Mutation test cases        | `fixtures/mutation/`                                           |
+| Fingerprint probe payloads | `fixtures/fingerprint/`                                        |
+| E2E fixture pages          | `fixtures/pages/`                                              |
+| Chromium patch set         | `patches/*.patch`                                              |
+| Patched Chromium source    | `patches/chromium/` (not committed; see patches/README.md)     |
+| Compiled browser binary    | `bin/chromium` (not committed; built by `make chromium-build`) |
+| Example app                | `examples/research-assistant/`                                 |
 
 ---
 
@@ -141,6 +142,7 @@ A PR is ready to merge when:
 **Why it takes hours:** Chromium is ~35 million lines of C++. A full build on a 16-core machine with 32 GB RAM takes 2–4 hours. The BoringSSL patch requires a full rebuild — incremental builds don't help on a fresh clone.
 
 **Alternatives for CI:**
+
 - **Prebuilt binary cache** — Build once, upload `bin/chromium` to a private artifact store (e.g. S3 + CloudFront), cache in CI with a hash of `patches/`. The `make chromium-build` target supports `CHROMIUM_CACHE_URL` env var for this workflow.
 - **sccache / goma** — Distributed compilation cache. Cuts rebuild time to ~20 min if a warm cache exists.
 - **Deferred status** — AC-F1/AC-F2 remain `.todo` until `make chromium-build` runs. All other 94 tests pass on standard CI runners without the custom binary.

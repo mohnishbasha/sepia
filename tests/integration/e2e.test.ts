@@ -54,9 +54,7 @@ describe('AC-AG1 — login flow against fixture server', () => {
       const emailNode = view.nodes.find(
         (n) => n.role === 'textbox' && n.name.toLowerCase().includes('email'),
       );
-      const passwordNode = view.nodes.find(
-        (n) => n.name.toLowerCase().includes('password'),
-      );
+      const passwordNode = view.nodes.find((n) => n.name.toLowerCase().includes('password'));
       const signInNode = view.nodes.find(
         (n) => n.role === 'button' && n.name.toLowerCase().includes('sign'),
       );
@@ -81,8 +79,7 @@ describe('AC-AG1 — login flow against fixture server', () => {
       const afterView: CompactView = await engine.observe();
       const resultNode = afterView.nodes.find(
         (n) =>
-          n.name.toLowerCase().includes('logged in') ||
-          n.name.toLowerCase().includes('success'),
+          n.name.toLowerCase().includes('logged in') || n.name.toLowerCase().includes('success'),
       );
       expect(resultNode, 'success message should appear after login').toBeDefined();
     } finally {
@@ -108,9 +105,7 @@ describe('AC-AG2 — form fill against fixture server', () => {
       const emailNode = view.nodes.find(
         (n) => n.role === 'textbox' && n.name.toLowerCase().includes('email'),
       );
-      const messageNode = view.nodes.find(
-        (n) => n.name.toLowerCase().includes('message'),
-      );
+      const messageNode = view.nodes.find((n) => n.name.toLowerCase().includes('message'));
       const submitNode = view.nodes.find(
         (n) => n.role === 'button' && n.name.toLowerCase().includes('submit'),
       );

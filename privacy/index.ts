@@ -44,10 +44,7 @@ const JSON_KEY_PATTERNS = [
 ];
 
 // Header patterns for Authorization and X-API-Key
-const HEADER_KEY_PATTERNS = [
-  /authorization/i,
-  /x-api-key/i,
-];
+const HEADER_KEY_PATTERNS = [/authorization/i, /x-api-key/i];
 
 export function redactSecrets(text: string): RedactionResult {
   if (text === '') return { redacted: '', count: 0 };
@@ -160,9 +157,7 @@ export function wrapWithAuditor<T extends Record<string, unknown>>(
       return (...args: unknown[]) => {
         const firstArg = args[0];
         const fields =
-          firstArg !== null &&
-          typeof firstArg === 'object' &&
-          !Array.isArray(firstArg)
+          firstArg !== null && typeof firstArg === 'object' && !Array.isArray(firstArg)
             ? Object.keys(firstArg as Record<string, unknown>)
             : [];
         auditor.record({
@@ -180,9 +175,9 @@ export function wrapWithAuditor<T extends Record<string, unknown>>(
 // ─── AES-256-GCM encryption (NFR-44 / FR-44) ────────────────────────────────
 
 export interface EncryptedData {
-  iv: string;         // hex-encoded 12-byte IV
+  iv: string; // hex-encoded 12-byte IV
   ciphertext: string; // hex-encoded ciphertext
-  authTag: string;    // hex-encoded 16-byte auth tag
+  authTag: string; // hex-encoded 16-byte auth tag
 }
 
 /**
@@ -192,10 +187,7 @@ export interface EncryptedData {
 export function encryptData(plaintext: string, key: Buffer): EncryptedData {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
-  const encrypted = Buffer.concat([
-    cipher.update(plaintext, 'utf8'),
-    cipher.final(),
-  ]);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();
   return {
     iv: iv.toString('hex'),
@@ -215,10 +207,7 @@ export function decryptData(encrypted: EncryptedData, key: Buffer): string {
   const authTag = Buffer.from(encrypted.authTag, 'hex');
   const decipher = createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(authTag);
-  return Buffer.concat([
-    decipher.update(ciphertext),
-    decipher.final(),
-  ]).toString('utf8');
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
 }
 
 /**

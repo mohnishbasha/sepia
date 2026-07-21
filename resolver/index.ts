@@ -72,18 +72,12 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 /**
  * Score two semantic fingerprints for similarity. Returns 0.0–1.0.
  */
-export function scoreFingerprints(
-  a: SemanticFingerprint,
-  b: SemanticFingerprint,
-): number {
+export function scoreFingerprints(a: SemanticFingerprint, b: SemanticFingerprint): number {
   // roleMatch: 1 if same role, else 0
   const roleMatch = a.role === b.role ? 1.0 : 0.0;
 
   // nameMatch: Jaccard similarity of tokenized accessible names
-  const nameMatch = jaccardSimilarity(
-    tokenize(a.accessibleName),
-    tokenize(b.accessibleName),
-  );
+  const nameMatch = jaccardSimilarity(tokenize(a.accessibleName), tokenize(b.accessibleName));
 
   // attrsMatch: check stable attrs
   const aHasAttrs =
@@ -121,11 +115,7 @@ export function scoreFingerprints(
     1.0 - Math.min(1.0, Math.abs(a.ordinalAmongSameRole - b.ordinalAmongSameRole) / 5.0);
 
   // Weighted sum
-  const score =
-    0.4 * roleMatch +
-    0.35 * nameMatch +
-    0.15 * attrsMatch +
-    0.10 * ordinalSimilarity;
+  const score = 0.4 * roleMatch + 0.35 * nameMatch + 0.15 * attrsMatch + 0.1 * ordinalSimilarity;
 
   return score;
 }
@@ -134,10 +124,7 @@ export function scoreFingerprints(
  * Derive a semantic fingerprint from a CompactNode and its siblings list.
  * The siblings list is the flat array in which this node appears.
  */
-export function deriveFingerprint(
-  node: CompactNode,
-  siblings: CompactNode[],
-): SemanticFingerprint {
+export function deriveFingerprint(node: CompactNode, siblings: CompactNode[]): SemanticFingerprint {
   const accessibleName = (node.name ?? '').toLowerCase().trim();
 
   // Count siblings with the same role appearing BEFORE this node
@@ -161,10 +148,7 @@ export function deriveFingerprint(
  * Find an existing handle with score > 0.85, or create a new one.
  * Returns the handle string.
  */
-export function assignHandle(
-  fingerprint: SemanticFingerprint,
-  map: HandleMap,
-): string {
+export function assignHandle(fingerprint: SemanticFingerprint, map: HandleMap): string {
   const mapWithCounter = map as HandleMapWithCounter;
 
   // Search for a matching existing handle

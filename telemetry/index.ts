@@ -38,8 +38,11 @@ export function createLogger(opts?: { verbose?: boolean; enabled?: boolean }): L
         );
       }
     },
-    info: (msg, meta) => process.stderr.write(`[info] ${msg} ${meta ? JSON.stringify(meta) : ''}\n`),
-    warn: (msg, meta) => process.stderr.write(`[warn] ${msg} ${meta ? JSON.stringify(meta) : ''}\n`),
-    error: (msg, meta) => process.stderr.write(`[error] ${msg} ${meta ? JSON.stringify(meta) : ''}\n`),
+    info: (msg, meta) =>
+      process.stderr.write(`[info] ${msg} ${meta ? JSON.stringify(meta) : ''}\n`),
+    warn: (msg, meta) =>
+      process.stderr.write(`[warn] ${msg} ${meta ? JSON.stringify(meta) : ''}\n`),
+    error: (msg, meta) =>
+      process.stderr.write(`[error] ${msg} ${meta ? JSON.stringify(meta) : ''}\n`),
   };
 }

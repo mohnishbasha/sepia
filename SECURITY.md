@@ -7,6 +7,7 @@
 Email: **security@sepia** (replace with maintainer contact before first public release)
 
 Please include:
+
 - Description of the vulnerability
 - Steps to reproduce
 - Impact assessment
@@ -21,6 +22,7 @@ See the full threat model in [`docs/phase1-spec.md §4`](docs/phase1-spec.md).
 **Assets:** User credentials and session tokens, page content (may contain PII), model API keys, host filesystem.
 
 **Adversaries:**
+
 - Malicious page content attempting prompt injection
 - Malicious page content using `file://` / `data://` URLs to reach the host filesystem
 - Anti-bot detection systems fingerprinting the automation layer
@@ -28,6 +30,7 @@ See the full threat model in [`docs/phase1-spec.md §4`](docs/phase1-spec.md).
 - Cross-profile data bleed between concurrent sessions
 
 **Key controls:**
+
 - All model output validated against a typed action enum before dispatch — no `eval`
 - `open()` rejects all non-`http(s)` URL schemes
 - Per-session process isolation; no shared storage between profiles
@@ -37,9 +40,9 @@ See the full threat model in [`docs/phase1-spec.md §4`](docs/phase1-spec.md).
 
 ## Supported versions
 
-| Version | Supported |
-|---|---|
-| `main` (pre-release) | Yes |
+| Version              | Supported |
+| -------------------- | --------- |
+| `main` (pre-release) | Yes       |
 
 Once the project reaches `1.0.0`, a version support matrix will be added here.
 

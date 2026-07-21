@@ -14,7 +14,9 @@ export interface ServeOptions {
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+    req.on('data', (chunk: Buffer) => {
+      data += chunk.toString();
+    });
     req.on('end', () => resolve(data));
     req.on('error', reject);
   });
@@ -57,7 +59,11 @@ export function startServer(opts: ServeOptions = {}): void {
       try {
         const parsed = JSON.parse(rawBody) as { goal?: unknown; config?: unknown };
         if (typeof parsed.goal !== 'string' || !parsed.goal.trim()) {
-          json(res, 400, { ok: false, error: 'INVALID_REQUEST', message: '"goal" string is required' });
+          json(res, 400, {
+            ok: false,
+            error: 'INVALID_REQUEST',
+            message: '"goal" string is required',
+          });
           return;
         }
         goal = parsed.goal;
@@ -87,6 +93,8 @@ export function startServer(opts: ServeOptions = {}): void {
   });
 
   server.listen(port, () => {
-    process.stderr.write(`[sepia] http server listening on :${String(port)} (maxConcurrent=${String(maxConcurrent)})\n`);
+    process.stderr.write(
+      `[sepia] http server listening on :${String(port)} (maxConcurrent=${String(maxConcurrent)})\n`,
+    );
   });
 }

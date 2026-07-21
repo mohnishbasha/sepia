@@ -8,8 +8,8 @@ import { startServer } from '../interfaces/http/index.js';
 function printUsage(): void {
   process.stderr.write(
     'Usage:\n' +
-    '  sepia run "<goal>" [--model X] [--endpoint Y] [--verbose]\n' +
-    '  sepia serve [--port 3000] [--max-concurrent 5]\n',
+      '  sepia run "<goal>" [--model X] [--endpoint Y] [--verbose]\n' +
+      '  sepia serve [--port 3000] [--max-concurrent 5]\n',
   );
 }
 

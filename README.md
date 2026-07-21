@@ -118,13 +118,13 @@ curl http://localhost:3000/health
 
 **Environment variables for the HTTP server:**
 
-| Variable | Default | Description |
-|---|---|---|
-| `SEPIA_HTTP_PORT` | `3000` | Port to listen on |
-| `SEPIA_MAX_CONCURRENT` | `5` | Max concurrent agent runs |
-| `SEPIA_MODEL_ENDPOINT` | `https://api.anthropic.com/v1` | Model API base URL |
-| `SEPIA_MODEL` | `claude-sonnet-4-6` | Model name |
-| `SEPIA_API_KEY` | — | API key (optional for local models) |
+| Variable               | Default                        | Description                         |
+| ---------------------- | ------------------------------ | ----------------------------------- |
+| `SEPIA_HTTP_PORT`      | `3000`                         | Port to listen on                   |
+| `SEPIA_MAX_CONCURRENT` | `5`                            | Max concurrent agent runs           |
+| `SEPIA_MODEL_ENDPOINT` | `https://api.anthropic.com/v1` | Model API base URL                  |
+| `SEPIA_MODEL`          | `claude-sonnet-4-6`            | Model name                          |
+| `SEPIA_API_KEY`        | —                              | API key (optional for local models) |
 
 ### MCP stdio
 
@@ -206,13 +206,13 @@ make helm-install SEPIA_API_KEY=sk-ant-...
 
 **What gets deployed:**
 
-| Resource | Default |
-|---|---|
-| Deployment | 2 replicas (managed by HPA) |
-| Service | ClusterIP on port 3000 |
-| HorizontalPodAutoscaler | 1–10 replicas, scale at 70% CPU |
-| Memory limit per pod | 2 Gi (Chromium is memory-hungry) |
-| CPU limit per pod | 2 000m |
+| Resource                | Default                          |
+| ----------------------- | -------------------------------- |
+| Deployment              | 2 replicas (managed by HPA)      |
+| Service                 | ClusterIP on port 3000           |
+| HorizontalPodAutoscaler | 1–10 replicas, scale at 70% CPU  |
+| Memory limit per pod    | 2 Gi (Chromium is memory-hungry) |
+| CPU limit per pod       | 2 000m                           |
 
 **Key `values.yaml` overrides:**
 
@@ -222,19 +222,19 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/mohnishbasha/sepia
-  tag: "v0.1.0"           # pin to a release
+  tag: 'v0.1.0' # pin to a release
 
 env:
-  SEPIA_MODEL_ENDPOINT: "https://api.anthropic.com/v1"
-  SEPIA_MODEL: "claude-sonnet-4-6"
-  SEPIA_MAX_CONCURRENT: "5"
+  SEPIA_MODEL_ENDPOINT: 'https://api.anthropic.com/v1'
+  SEPIA_MODEL: 'claude-sonnet-4-6'
+  SEPIA_MAX_CONCURRENT: '5'
 
-existingSecret: sepia-credentials   # kubectl secret holding SEPIA_API_KEY
+existingSecret: sepia-credentials # kubectl secret holding SEPIA_API_KEY
 
 resources:
   limits:
-    memory: "2Gi"
-    cpu: "2000m"
+    memory: '2Gi'
+    cpu: '2000m'
 
 hpa:
   enabled: true
@@ -243,7 +243,7 @@ hpa:
   targetCPUUtilizationPercentage: 70
 
 chromium:
-  noSandbox: true    # false requires privileged: true or SYS_ADMIN cap
+  noSandbox: true # false requires privileged: true or SYS_ADMIN cap
 ```
 
 Lint and dry-run the chart before applying:
@@ -277,17 +277,17 @@ The serializer and resolver are **pure and deterministic** — no LLM calls, ful
 
 All configuration is via a `SepiaConfig` object or environment variables. Secure defaults everywhere — opt-in for anything that could expose data.
 
-| Key | Default | Description |
-|---|---|---|
-| `model.endpoint` | `https://api.anthropic.com/v1` | Model API endpoint (Anthropic or OpenAI-compat) |
-| `model.model` | `claude-sonnet-4-6` | Model name |
-| `browser.ephemeral` | `true` | Ephemeral profile (cleared on session end) |
-| `browser.headless` | `true` | Headless mode |
-| `browser.profile` | `chrome-130-linux-x86_64` | Fingerprint preset |
-| `agent.maxSteps` | `50` | Max steps per run |
-| `agent.confidenceThreshold` | `0.7` | Re-observe if confidence drops below this |
-| `privacy.telemetry` | `false` | Usage telemetry (off by default) |
-| `security.robotsAwareness` | `false` | Respect robots.txt (opt-in) |
+| Key                         | Default                        | Description                                     |
+| --------------------------- | ------------------------------ | ----------------------------------------------- |
+| `model.endpoint`            | `https://api.anthropic.com/v1` | Model API endpoint (Anthropic or OpenAI-compat) |
+| `model.model`               | `claude-sonnet-4-6`            | Model name                                      |
+| `browser.ephemeral`         | `true`                         | Ephemeral profile (cleared on session end)      |
+| `browser.headless`          | `true`                         | Headless mode                                   |
+| `browser.profile`           | `chrome-130-linux-x86_64`      | Fingerprint preset                              |
+| `agent.maxSteps`            | `50`                           | Max steps per run                               |
+| `agent.confidenceThreshold` | `0.7`                          | Re-observe if confidence drops below this       |
+| `privacy.telemetry`         | `false`                        | Usage telemetry (off by default)                |
+| `security.robotsAwareness`  | `false`                        | Respect robots.txt (opt-in)                     |
 
 See [`config/index.ts`](config/index.ts) for the full typed schema.
 
@@ -330,6 +330,7 @@ make test-fingerprint # AC-F1 and AC-F2 will pass once the binary exists
 **Why it takes hours:** Chromium is ~35 million lines of C++. The JA3/JA4 patch touches BoringSSL at the source level — header patching is not sufficient — so a full recompile is required on every fresh checkout.
 
 **CI strategy options:**
+
 - **Prebuilt cache** — Build once, push `bin/chromium` to a private artifact store keyed on `sha256(patches/*.patch)`. Set `CHROMIUM_CACHE_URL` to pull it in CI.
 - **sccache / goma** — Distributed C++ compilation cache; warms to ~20 min rebuild after first build.
 - **Skip and defer** — AC-F1/AC-F2 remain `todo` in CI without the binary. All 94 other tests pass on stock runners.
@@ -338,15 +339,15 @@ make test-fingerprint # AC-F1 and AC-F2 will pass once the binary exists
 
 ## Test suite
 
-| Suite | Count | Gate |
-|---|---|---|
-| Unit (serializer, resolver, privacy, fingerprint) | ~50 | `make test-unit` |
-| Contract (all 16 actions, stale-handle) | ~20 | `make test` |
-| Integration (E2E browser, trace-secrets) | ~10 | `make test` |
-| Resilience (budget, retry) | ~6 | `make test` |
-| Token budget (M1 corpus) | ~5 | `make test-tokens` |
-| Mutation (M2 handle stability) | ~5 | `make test-mutation` |
-| **Total** | **96 pass, 2 todo** | `make ci` |
+| Suite                                             | Count               | Gate                 |
+| ------------------------------------------------- | ------------------- | -------------------- |
+| Unit (serializer, resolver, privacy, fingerprint) | ~50                 | `make test-unit`     |
+| Contract (all 16 actions, stale-handle)           | ~20                 | `make test`          |
+| Integration (E2E browser, trace-secrets)          | ~10                 | `make test`          |
+| Resilience (budget, retry)                        | ~6                  | `make test`          |
+| Token budget (M1 corpus)                          | ~5                  | `make test-tokens`   |
+| Mutation (M2 handle stability)                    | ~5                  | `make test-mutation` |
+| **Total**                                         | **96 pass, 2 todo** | `make ci`            |
 
 The 2 todo items (AC-F1, AC-F2) require `make chromium-build`. Everything else passes on standard CI.
 
@@ -361,6 +362,6 @@ The 2 todo items (AC-F1, AC-F2) require `make chromium-build`. Everything else p
 - [SKILLS.md](SKILLS.md) — Catalog of reusable agent skills
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
 - [SECURITY.md](SECURITY.md) — Security policy and threat model
-- [docs/phase1-spec.md](docs/phase1-spec.md) — Numbered FR-*/AC-* technical specification (development reference)
-- [docs/phase3-addendum.md](docs/phase3-addendum.md) — Phase 3 hardening: AC-* coverage matrix, deferred items, new APIs
+- [docs/phase1-spec.md](docs/phase1-spec.md) — Numbered FR-_/AC-_ technical specification (development reference)
+- [docs/phase3-addendum.md](docs/phase3-addendum.md) — Phase 3 hardening: AC-\* coverage matrix, deferred items, new APIs
 - [examples/research-assistant/](examples/research-assistant/) — SDK demo for the AI engineer persona

@@ -1,6 +1,6 @@
 # soul.md — The design philosophy of Sepia
 
-This document captures *why* Sepia is built the way it is. The spec describes what it does. This describes what it believes.
+This document captures _why_ Sepia is built the way it is. The spec describes what it does. This describes what it believes.
 
 ---
 
@@ -48,7 +48,7 @@ This is the hard path. It requires patching Chromium source and a multi-hour bui
 
 Credentials never touch the model context. The `privacy/` module is a hard gate, not a best-effort filter. The serializer strips secrets before the compact view is built. `redactSecrets()` runs on every typed text before it is recorded in the trace. `sanitizeForLLM()` runs on every page view before it enters the LLM context.
 
-The audit log records *what left the process*, not what was on the page. The trace records *that a secret was redacted*, not what it was. These are not privacy features bolted on after the fact — they are the architecture.
+The audit log records _what left the process_, not what was on the page. The trace records _that a secret was redacted_, not what it was. These are not privacy features bolted on after the fact — they are the architecture.
 
 At-rest encryption (AES-256-GCM with random IV per write) is the default for profile credentials. There is no "store plaintext" mode.
 
@@ -88,4 +88,4 @@ Every abstraction in Sepia earns its place by solving a problem that couldn't be
 
 ---
 
-*Sepia is built to last. The web will keep changing. The model will keep improving. The token budget will keep shrinking. We build the parts that outlast all of this — and keep everything else as simple as possible.*
+_Sepia is built to last. The web will keep changing. The model will keep improving. The token budget will keep shrinking. We build the parts that outlast all of this — and keep everything else as simple as possible._

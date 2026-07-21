@@ -25,7 +25,13 @@
     },
     {
       "description": "Group TypeScript toolchain updates",
-      "matchPackageNames": ["typescript", "typescript-eslint", "@typescript-eslint/parser", "@typescript-eslint/eslint-plugin", "tsx"],
+      "matchPackageNames": [
+        "typescript",
+        "typescript-eslint",
+        "@typescript-eslint/parser",
+        "@typescript-eslint/eslint-plugin",
+        "tsx"
+      ],
       "groupName": "typescript-toolchain"
     },
     {

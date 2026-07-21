@@ -130,13 +130,16 @@ describe('resilience — network timeout', () => {
     };
     vi.mocked(createEngine).mockResolvedValue(mockEngine);
 
-    vi.mocked(OpenAI).mockImplementation(() => ({
-      chat: {
-        completions: {
-          create: vi.fn().mockRejectedValue(new Error('Request timed out')),
-        },
-      },
-    }) as unknown as InstanceType<typeof OpenAI>);
+    vi.mocked(OpenAI).mockImplementation(
+      () =>
+        ({
+          chat: {
+            completions: {
+              create: vi.fn().mockRejectedValue(new Error('Request timed out')),
+            },
+          },
+        }) as unknown as InstanceType<typeof OpenAI>,
+    );
 
     const config = makeBaseConfig();
     const trace = await createAgent(config).run('do something');
@@ -181,16 +184,19 @@ describe('resilience — budget exceeded', () => {
     vi.mocked(createEngine).mockResolvedValue(mockEngine);
 
     // Model always returns a click action — never 'done'
-    vi.mocked(OpenAI).mockImplementation(() => ({
-      chat: {
-        completions: {
-          create: vi.fn().mockResolvedValue({
-            choices: [{ message: { content: '{"action":"click","handle":"e1"}' } }],
-            usage: { total_tokens: 100 },
-          }),
-        },
-      },
-    }) as unknown as InstanceType<typeof OpenAI>);
+    vi.mocked(OpenAI).mockImplementation(
+      () =>
+        ({
+          chat: {
+            completions: {
+              create: vi.fn().mockResolvedValue({
+                choices: [{ message: { content: '{"action":"click","handle":"e1"}' } }],
+                usage: { total_tokens: 100 },
+              }),
+            },
+          },
+        }) as unknown as InstanceType<typeof OpenAI>,
+    );
 
     // maxSteps: 2 → loop runs only 2 times, then budget_exceeded
     const config = makeBaseConfig({ maxSteps: 2 });
@@ -231,16 +237,19 @@ describe('resilience — budget exceeded', () => {
     vi.mocked(createEngine).mockResolvedValue(mockEngine);
 
     // Each model call returns 1000 tokens; budget is 500 → exceeded after first step
-    vi.mocked(OpenAI).mockImplementation(() => ({
-      chat: {
-        completions: {
-          create: vi.fn().mockResolvedValue({
-            choices: [{ message: { content: '{"action":"click","handle":"e1"}' } }],
-            usage: { total_tokens: 1000 },
-          }),
-        },
-      },
-    }) as unknown as InstanceType<typeof OpenAI>);
+    vi.mocked(OpenAI).mockImplementation(
+      () =>
+        ({
+          chat: {
+            completions: {
+              create: vi.fn().mockResolvedValue({
+                choices: [{ message: { content: '{"action":"click","handle":"e1"}' } }],
+                usage: { total_tokens: 1000 },
+              }),
+            },
+          },
+        }) as unknown as InstanceType<typeof OpenAI>,
+    );
 
     const config = makeBaseConfig({ maxSteps: 10, maxTokensPerRun: 500 });
     const trace = await createAgent(config).run('spend all tokens');

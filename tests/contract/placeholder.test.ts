@@ -17,7 +17,9 @@ describe('action contract — parseAction', () => {
   });
 
   it('throws on unknown action name', () => {
-    expect(() => parseAction({ action: 'eval', handle: 'e1' })).toThrow(/Unknown or invalid action/);
+    expect(() => parseAction({ action: 'eval', handle: 'e1' })).toThrow(
+      /Unknown or invalid action/,
+    );
   });
 
   it('throws on non-object input', () => {
@@ -27,7 +29,21 @@ describe('action contract — parseAction', () => {
   });
 
   it('ACTION_NAMES includes all required actions', () => {
-    const required = ['click', 'type', 'select', 'check', 'hover', 'scroll', 'press', 'read', 'observe', 'wait', 'open', 'back', 'forward'];
+    const required = [
+      'click',
+      'type',
+      'select',
+      'check',
+      'hover',
+      'scroll',
+      'press',
+      'read',
+      'observe',
+      'wait',
+      'open',
+      'back',
+      'forward',
+    ];
     for (const name of required) {
       expect(ACTION_NAMES.has(name as never), `missing action: ${name}`).toBe(true);
     }
@@ -41,7 +57,9 @@ describe('action contract — parseAction with done action', () => {
   });
 
   it('parseAction with eval action throws', () => {
-    expect(() => parseAction({ action: 'eval', code: 'alert(1)' })).toThrow(/Unknown or invalid action/);
+    expect(() => parseAction({ action: 'eval', code: 'alert(1)' })).toThrow(
+      /Unknown or invalid action/,
+    );
   });
 });
 
@@ -219,7 +237,7 @@ describe('action contract — stale handle returns STALE_HANDLE (AC-A1)', () => 
       error: { code: 'STALE_HANDLE', message: 'stale', handle: 'e99' },
     });
     const action = parseAction({ action: 'click', handle: 'e99' });
-    const result = await dispatch(action, engine) as ActionResult;
+    const result = (await dispatch(action, engine)) as ActionResult;
     expect(result.ok).toBe(false);
     expect(result.error?.code).toBe('STALE_HANDLE');
     expect(result.error?.handle).toBe('e99');
@@ -233,7 +251,7 @@ describe('action contract — stale handle returns STALE_HANDLE (AC-A1)', () => 
       error: { code: 'STALE_HANDLE', message: 'stale', handle: 'e88' },
     });
     const action = parseAction({ action: 'type', handle: 'e88', text: 'hello' });
-    const result = await dispatch(action, engine) as ActionResult;
+    const result = (await dispatch(action, engine)) as ActionResult;
     expect(result.ok).toBe(false);
     expect(result.error?.code).toBe('STALE_HANDLE');
   });

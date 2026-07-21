@@ -87,7 +87,8 @@ describe('integration — agent loop (mocked engine + model)', () => {
     vi.mocked(createEngine).mockResolvedValue(mockEngine);
 
     // Model: first call returns open, second returns done
-    const mockCreate = vi.fn()
+    const mockCreate = vi
+      .fn()
       .mockResolvedValueOnce({
         choices: [{ message: { content: '{"action":"open","url":"https://example.com"}' } }],
         usage: { total_tokens: 100 },
@@ -97,9 +98,12 @@ describe('integration — agent loop (mocked engine + model)', () => {
         usage: { total_tokens: 50 },
       });
 
-    vi.mocked(OpenAI).mockImplementation(() => ({
-      chat: { completions: { create: mockCreate } },
-    }) as unknown as InstanceType<typeof OpenAI>);
+    vi.mocked(OpenAI).mockImplementation(
+      () =>
+        ({
+          chat: { completions: { create: mockCreate } },
+        }) as unknown as InstanceType<typeof OpenAI>,
+    );
 
     const config = {
       model: {
@@ -209,7 +213,8 @@ describe('integration — agent loop (mocked engine + model)', () => {
     };
     vi.mocked(createEngine).mockResolvedValue(mockEngine);
 
-    const mockCreate = vi.fn()
+    const mockCreate = vi
+      .fn()
       .mockResolvedValueOnce({
         choices: [{ message: { content: '{"action":"click","handle":"e1"}' } }],
         usage: { total_tokens: 80 },
@@ -219,9 +224,12 @@ describe('integration — agent loop (mocked engine + model)', () => {
         usage: { total_tokens: 40 },
       });
 
-    vi.mocked(OpenAI).mockImplementation(() => ({
-      chat: { completions: { create: mockCreate } },
-    }) as unknown as InstanceType<typeof OpenAI>);
+    vi.mocked(OpenAI).mockImplementation(
+      () =>
+        ({
+          chat: { completions: { create: mockCreate } },
+        }) as unknown as InstanceType<typeof OpenAI>,
+    );
 
     const config = {
       model: {
@@ -289,7 +297,8 @@ describe('integration — agent loop (mocked engine + model)', () => {
     };
     vi.mocked(createEngine).mockResolvedValue(mockEngine);
 
-    const mockCreate = vi.fn()
+    const mockCreate = vi
+      .fn()
       .mockResolvedValueOnce({
         choices: [{ message: { content: '{"action":"click","handle":"e1"}' } }],
         usage: { total_tokens: 80 },
@@ -299,9 +308,12 @@ describe('integration — agent loop (mocked engine + model)', () => {
         usage: { total_tokens: 40 },
       });
 
-    vi.mocked(OpenAI).mockImplementation(() => ({
-      chat: { completions: { create: mockCreate } },
-    }) as unknown as InstanceType<typeof OpenAI>);
+    vi.mocked(OpenAI).mockImplementation(
+      () =>
+        ({
+          chat: { completions: { create: mockCreate } },
+        }) as unknown as InstanceType<typeof OpenAI>,
+    );
 
     const config = {
       model: {
@@ -366,9 +378,12 @@ describe('integration — agent loop (mocked engine + model)', () => {
       usage: { total_tokens: 30 },
     });
 
-    vi.mocked(OpenAI).mockImplementation(() => ({
-      chat: { completions: { create: mockCreate } },
-    }) as unknown as InstanceType<typeof OpenAI>);
+    vi.mocked(OpenAI).mockImplementation(
+      () =>
+        ({
+          chat: { completions: { create: mockCreate } },
+        }) as unknown as InstanceType<typeof OpenAI>,
+    );
 
     const config = {
       model: {
