@@ -4,7 +4,7 @@
 # the build host / GHA runner between runs, making repeated builds much faster.
 
 # ── base: Node.js + pnpm (installed once, shared by all stages) ───────────────
-FROM node:22.11.0-bookworm-slim AS base
+FROM node:24.18.0-bookworm-slim AS base
 # Cache mount prevents re-downloading pnpm on every build.
 RUN --mount=type=cache,id=npm-global,target=/root/.npm \
     npm install -g pnpm@9.12.3 --silent
