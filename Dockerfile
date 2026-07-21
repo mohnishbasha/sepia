@@ -45,7 +45,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/app/.playwright-browsers
 RUN --mount=type=cache,id=apt,sharing=locked,target=/var/cache/apt \
     --mount=type=cache,id=apt-lists,sharing=locked,target=/var/lib/apt/lists \
     pnpm exec playwright install-deps chromium
-RUN pnpm exec playwright install chromium
+RUN pnpm exec playwright install --only-shell chromium
 
 # ── runtime: final image ──────────────────────────────────────────────────────
 # Inherits Chromium system libs and binary from playwright-browser.

@@ -93,7 +93,7 @@ describe('fingerprint — browser tests', () => {
 
   // AC-F3: navigator.webdriver is undefined in a sepia-configured browser context
   it('AC-F3: navigator.webdriver probe passes in sepia-configured browser', async () => {
-    const preset = getPreset('chrome-130-linux-x86_64');
+    const preset = getPreset('chrome-149-linux-x86_64');
     const result = await validateCoherence(preset, page);
 
     const webdriverCheck = result.checks.find((c) => c.name === 'typeof navigator.webdriver');
@@ -103,7 +103,7 @@ describe('fingerprint — browser tests', () => {
 
   // AC-F4: full cross-signal coherence — all non-JA3/JA4 checks pass
   it('AC-F4: all non-JA3/JA4 coherence checks pass', async () => {
-    const preset = getPreset('chrome-130-linux-x86_64');
+    const preset = getPreset('chrome-149-linux-x86_64');
     const result = await validateCoherence(preset, page);
 
     // Top-level passed field must be true (all non-TLS checks pass)
@@ -129,9 +129,9 @@ describe('fingerprint — browser tests', () => {
   it('AC-F5: validateAndStart throws when a probe has wrong expected value', async () => {
     // Create a modified copy with a wrong expected value for navigator.vendor
     const badPreset = {
-      ...getPreset('chrome-130-linux-x86_64'),
+      ...getPreset('chrome-149-linux-x86_64'),
       jsProbes: {
-        ...getPreset('chrome-130-linux-x86_64').jsProbes,
+        ...getPreset('chrome-149-linux-x86_64').jsProbes,
         'navigator.vendor': 'Wrong Inc.',
       },
     };

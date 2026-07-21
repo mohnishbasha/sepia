@@ -56,6 +56,30 @@ export const PRESETS: Record<string, ProfilePreset> = {
     },
     // expectedJA3 and expectedJA4 are intentionally omitted — requires patched Chromium
   },
+
+  // Matches the Playwright 1.61.x headless shell (Chrome 149, build 1228)
+  'chrome-149-linux-x86_64': {
+    id: 'chrome-149-linux-x86_64',
+    chromeVersion: '149.0.7827.55',
+    os: 'linux',
+    arch: 'x86_64',
+    userAgent:
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+    acceptLanguage: 'en-US,en;q=0.9',
+    platform: 'Linux x86_64',
+    vendor: 'Google Inc.',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    deviceScaleFactor: 1,
+    timezone: 'America/New_York',
+    locale: 'en-US',
+    jsProbes: {
+      'typeof navigator.webdriver': 'undefined',
+      'navigator.vendor': 'Google Inc.',
+      'window.chrome !== undefined': 'true',
+    },
+    // expectedJA3 and expectedJA4 are intentionally omitted — requires patched Chromium
+  },
 };
 
 export function getPreset(id: string): ProfilePreset {
@@ -94,7 +118,8 @@ export async function validateCoherence(
   }
 
   // UA probe: verify the user agent includes the expected Chrome major version
-  const uaExpr = `navigator.userAgent.includes("Chrome/130")`;
+  const chromeMajor = preset.chromeVersion.split('.')[0];
+  const uaExpr = `navigator.userAgent.includes("Chrome/${chromeMajor}")`;
   const uaActual = String(await p.evaluate(`String(${uaExpr})`));
   const uaPassed = uaActual === 'true';
   checks.push(

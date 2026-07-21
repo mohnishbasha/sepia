@@ -47,47 +47,90 @@ export interface SepiaEngine {
   close: () => Promise<void>;
 }
 
-/**
- * Playwright AccessibilityNode local type (not exported by playwright).
- * Matches the runtime shape from playwright-core/types/types.d.ts.
- */
-interface PlaywrightAXNode {
-  role: string;
+// CDP Accessibility node types (page.accessibility was removed in Playwright 1.61).
+interface CDPAXValue {
+  type: string;
+  value?: string | boolean | number;
+}
+interface CDPAXProperty {
   name: string;
-  value?: string | number;
-  description?: string;
-  disabled?: boolean;
-  expanded?: boolean;
-  required?: boolean;
-  selected?: boolean;
-  checked?: boolean | 'mixed';
-  children?: PlaywrightAXNode[];
+  value: CDPAXValue;
+}
+interface CDPAXNode {
+  nodeId: string;
+  parentId?: string;
+  childIds?: string[];
+  role?: CDPAXValue;
+  name?: CDPAXValue;
+  value?: CDPAXValue;
+  description?: CDPAXValue;
+  properties?: CDPAXProperty[];
+  ignored?: boolean;
 }
 
-/**
- * Convert a Playwright AccessibilityNode to an AXSnapshot.
- * Playwright's value can be string|number; our serializer expects string|undefined.
- */
-function toAXSnapshot(node: PlaywrightAXNode | null): AXSnapshot | null {
-  if (node === null) return null;
-  const result: AXSnapshot = {
-    role: node.role,
-    name: node.name,
-  };
-  if (node.description !== undefined) result.description = node.description;
-  if (node.checked !== undefined) result.checked = node.checked;
-  if (node.expanded !== undefined) result.expanded = node.expanded;
-  if (node.disabled !== undefined) result.disabled = node.disabled;
-  if (node.required !== undefined) result.required = node.required;
-  if (node.selected !== undefined) result.selected = node.selected;
-  if (node.value !== undefined) result.value = String(node.value);
-  if (node.children !== undefined) {
-    result.children = node.children.map((c: PlaywrightAXNode) => {
-      const child = toAXSnapshot(c);
-      return child ?? { role: 'none', name: '' };
-    });
+// Fetch the full AX tree via CDP and convert directly to AXSnapshot.
+async function getAXSnapshot(page: Page): Promise<AXSnapshot | null> {
+  const client = await page.context().newCDPSession(page);
+  try {
+    const { nodes } = (await client.send('Accessibility.getFullAXTree')) as {
+      nodes: CDPAXNode[];
+    };
+
+    const nodeMap = new Map<string, CDPAXNode>();
+    for (const n of nodes) nodeMap.set(n.nodeId, n);
+
+    const root = nodes.find((n) => !n.parentId || !nodeMap.has(n.parentId));
+    if (!root) return null;
+
+    // Recursively collect non-ignored descendants, flattening any ignored layers.
+    function collectVisible(childIds: string[]): CDPAXNode[] {
+      const result: CDPAXNode[] = [];
+      for (const id of childIds) {
+        const child = nodeMap.get(id);
+        if (!child) continue;
+        if (child.ignored) {
+          result.push(...collectVisible(child.childIds ?? []));
+        } else {
+          result.push(child);
+        }
+      }
+      return result;
+    }
+
+    function convert(node: CDPAXNode): AXSnapshot {
+      const role = String(node.role?.value ?? 'none');
+      const name = String(node.name?.value ?? '');
+      const result: AXSnapshot = { role, name };
+
+      const rawVal = node.value?.value;
+      if (rawVal !== undefined && rawVal !== null) result.value = String(rawVal);
+
+      const rawDesc = node.description?.value;
+      if (rawDesc !== undefined && rawDesc !== null) result.description = String(rawDesc);
+
+      for (const prop of node.properties ?? []) {
+        const v = prop.value?.value;
+        if (prop.name === 'checked') result.checked = v === true || v === 'true' ? true : v === 'mixed' ? 'mixed' : false;
+        else if (prop.name === 'disabled') result.disabled = v === true || v === 'true';
+        else if (prop.name === 'required') result.required = v === true || v === 'true';
+        else if (prop.name === 'expanded') result.expanded = v === true || v === 'true';
+        else if (prop.name === 'selected') result.selected = v === true || v === 'true';
+      }
+
+      // Ignored nodes are collapsed: skip the node but promote its children.
+      // This mirrors the old page.accessibility.snapshot() behaviour.
+      const visibleChildren = collectVisible(node.childIds ?? []);
+      if (visibleChildren.length > 0) {
+        result.children = visibleChildren.map(convert);
+      }
+
+      return result;
+    }
+
+    return convert(root);
+  } finally {
+    await client.detach();
   }
-  return result;
 }
 
 // Engine factory — Phase 2 M3
@@ -140,8 +183,7 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
   }
 
   async function getView(): Promise<{ view: CompactView; snap: AXSnapshot | null }> {
-    const rawSnap = await page.accessibility.snapshot();
-    const snap = toAXSnapshot(rawSnap as PlaywrightAXNode | null);
+    const snap = await getAXSnapshot(page);
     const view = serialize(snap, null, { url: page.url(), title: await page.title() });
     return { view: processCompactView(view, handleMap), snap };
   }
@@ -179,8 +221,7 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
       verbosity?: 'minimal' | 'standard' | 'full';
     }): Promise<CompactView> {
       await settle();
-      const rawSnap = await page.accessibility.snapshot();
-      const snap = toAXSnapshot(rawSnap as PlaywrightAXNode | null);
+      const snap = await getAXSnapshot(page);
       const serOpts: { verbosity?: 'minimal' | 'standard' | 'full'; url: string; title: string } = {
         url: page.url(),
         title: await page.title(),

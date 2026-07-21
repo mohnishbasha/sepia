@@ -29,7 +29,7 @@ setup: ## Install toolchain and pinned dependencies (run once after clone)
 	@echo "pnpm: installing..."
 	npm install -g pnpm@$(PNPM_VERSION) --silent
 	pnpm install
-	pnpm playwright install chromium --with-deps
+	pnpm playwright install --only-shell --with-deps chromium
 
 install: setup ## Alias for setup
 
