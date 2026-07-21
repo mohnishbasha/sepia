@@ -48,6 +48,8 @@ interface LoginOutput {
 - No password field found → return `ok: false, error: 'PASSWORD_FIELD_NOT_FOUND'`.
 - Budget exhausted → return `ok: false, error: 'BUDGET_EXCEEDED'`.
 
+**E2E test coverage (Phase 3):** `tests/integration/e2e.test.ts` — AC-AG1. Runs against `fixtures/pages/login.html` using a real Playwright Chromium browser. Verifies the full action sequence (open → observe → type email → type password → click "Sign in" → observe success heading).
+
 **Example invocation:**
 ```typescript
 const result = await agent.run('Sign in to app.example.com using my stored credentials');
@@ -124,6 +126,8 @@ interface FillFormOutput {
 **Failure handling:**
 - Field not found by label → skip and log warning; return `ok: false` if `submit: true` and required field was skipped.
 - Submit button stale → re-observe, retry.
+
+**E2E test coverage (Phase 3):** `tests/integration/e2e.test.ts` — AC-AG2. Runs against `fixtures/pages/form.html` using a real Playwright Chromium browser. Verifies the full action sequence (open → observe → type name → type email → type message → click "Submit" → observe success heading).
 
 **Example invocation:**
 ```typescript

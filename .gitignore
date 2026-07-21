@@ -11,3 +11,4 @@ patches/chromium/
 *.patch.rej
 .DS_Store
 .vitest-cache
+.tmp/

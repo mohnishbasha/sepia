@@ -125,11 +125,47 @@ interfaces/sdk ──→ agent
 
 ---
 
+## Chromium build and JA3/JA4 fingerprints
+
+Standard `make setup` installs Playwright's stock Chromium — sufficient for all features except TLS fingerprint matching (AC-F1/AC-F2). To build the patched binary:
+
+```bash
+make chromium-build   # ~2–4 hours on 16-core machine; applies 4 patches to BoringSSL layer
+make test-fingerprint # AC-F1 and AC-F2 will pass once the binary exists
+```
+
+**Why it takes hours:** Chromium is ~35 million lines of C++. The JA3/JA4 patch touches BoringSSL at the source level — header patching is not sufficient — so a full recompile is required on every fresh checkout.
+
+**CI strategy options:**
+- **Prebuilt cache** — Build once, push `bin/chromium` to a private artifact store keyed on `sha256(patches/*.patch)`. Set `CHROMIUM_CACHE_URL` to pull it in CI.
+- **sccache / goma** — Distributed C++ compilation cache; warms to ~20 min rebuild after first build.
+- **Skip and defer** — AC-F1/AC-F2 remain `todo` in CI without the binary. All 94 other tests pass on stock runners.
+
+---
+
+## Test suite
+
+| Suite | Count | Gate |
+|---|---|---|
+| Unit (serializer, resolver, privacy, fingerprint) | ~50 | `make test-unit` |
+| Contract (all 16 actions, stale-handle) | ~20 | `make test` |
+| Integration (E2E browser, trace-secrets) | ~10 | `make test` |
+| Resilience (budget, retry) | ~6 | `make test` |
+| Token budget (M1 corpus) | ~5 | `make test-tokens` |
+| Mutation (M2 handle stability) | ~5 | `make test-mutation` |
+| **Total** | **96 pass, 2 todo** | `make ci` |
+
+The 2 todo items (AC-F1, AC-F2) require `make chromium-build`. Everything else passes on standard CI.
+
+---
+
 ## Further reading
 
+- [soul.md](soul.md) — Design philosophy and principles behind Sepia
 - [CLAUDE.md](CLAUDE.md) — Operating guide for AI coding agents working in this repo
 - [SKILLS.md](SKILLS.md) — Catalog of reusable agent skills
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
 - [SECURITY.md](SECURITY.md) — Security policy and threat model
 - [docs/phase1-spec.md](docs/phase1-spec.md) — Full product requirements and technical specification
+- [docs/phase3-addendum.md](docs/phase3-addendum.md) — Phase 3 hardening: AC-* coverage matrix, deferred items, new APIs
 - [examples/research-assistant/](examples/research-assistant/) — SDK demo for the AI engineer persona
