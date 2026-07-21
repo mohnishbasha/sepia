@@ -1,0 +1,19 @@
+{
+  "name": "sepia-research-assistant",
+  "version": "0.1.0",
+  "description": "Sepia SDK demo — batch research queries → JSON report (AI engineer persona)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "sepia": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.9.0",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3"
+  }
+}

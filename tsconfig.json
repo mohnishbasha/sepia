@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "allowImportingTsExtensions": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "esModuleInterop": false
+  },
+  "include": [
+    "types/**/*.ts",
+    "config/**/*.ts",
+    "serializer/**/*.ts",
+    "resolver/**/*.ts",
+    "fingerprint/**/*.ts",
+    "privacy/**/*.ts",
+    "telemetry/**/*.ts",
+    "actions/**/*.ts",
+    "engine/**/*.ts",
+    "agent/**/*.ts",
+    "interfaces/**/*.ts",
+    "cli/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "examples"
+  ]
+}

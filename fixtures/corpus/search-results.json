@@ -1,0 +1,106 @@
+{
+  "title": "Search Results",
+  "url": "https://example.com/search",
+  "axSnapshot": {
+    "role": "WebArea",
+    "name": "Search Results",
+    "children": [
+      {
+        "role": "banner",
+        "name": "",
+        "children": [
+          {
+            "role": "generic",
+            "name": "",
+            "children": [
+              {
+                "role": "searchbox",
+                "name": "Search",
+                "value": "TypeScript",
+                "children": []
+              },
+              {
+                "role": "button",
+                "name": "Search",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "role": "main",
+        "name": "",
+        "children": [
+          {
+            "role": "heading",
+            "name": "Results",
+            "children": []
+          },
+          {
+            "role": "list",
+            "name": "",
+            "children": [
+              {
+                "role": "listitem",
+                "name": "",
+                "children": [
+                  {
+                    "role": "link",
+                    "name": "TypeScript Handbook",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "role": "listitem",
+                "name": "",
+                "children": [
+                  {
+                    "role": "link",
+                    "name": "TypeScript Deep Dive",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "role": "listitem",
+                "name": "",
+                "children": [
+                  {
+                    "role": "link",
+                    "name": "TypeScript Playground",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "role": "listitem",
+                "name": "",
+                "children": [
+                  {
+                    "role": "link",
+                    "name": "TypeScript GitHub Repository",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "role": "listitem",
+                "name": "",
+                "children": [
+                  {
+                    "role": "link",
+                    "name": "TypeScript Release Notes",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "groundTruth": ["Search", "Results", "TypeScript Handbook", "TypeScript Deep Dive", "TypeScript Playground"]
+}

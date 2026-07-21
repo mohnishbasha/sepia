@@ -1,0 +1,18 @@
+{
+  "description": "Sibling buttons reordered: 3 buttons appear in different order after mutation. All should remain stable.",
+  "before": [
+    { "handle": "e1", "role": "button", "name": "Sign in", "indent": 0 },
+    { "handle": "e2", "role": "button", "name": "Register", "indent": 0 },
+    { "handle": "e3", "role": "button", "name": "Forgot Password", "indent": 0 }
+  ],
+  "after": [
+    { "handle": "e3", "role": "button", "name": "Forgot Password", "indent": 0 },
+    { "handle": "e1", "role": "button", "name": "Sign in", "indent": 0 },
+    { "handle": "e2", "role": "button", "name": "Register", "indent": 0 }
+  ],
+  "expectations": {
+    "Sign in": "stable",
+    "Register": "stable",
+    "Forgot Password": "stable"
+  }
+}

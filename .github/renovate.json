@@ -1,0 +1,50 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["every weekend"],
+  "assignees": ["mohnishbasha"],
+  "reviewers": ["mohnishbasha"],
+  "labels": ["dependencies"],
+  "commitMessagePrefix": "chore(deps):",
+  "rangeStrategy": "pin",
+  "pinVersions": true,
+  "separateMajorMinor": true,
+  "separateMinorPatch": false,
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "description": "Pin all dependencies to exact versions (no ranges)",
+      "matchPackagePatterns": ["*"],
+      "rangeStrategy": "pin",
+      "pinVersions": true
+    },
+    {
+      "description": "Group Playwright updates",
+      "matchPackageNames": ["playwright", "@playwright/test"],
+      "groupName": "playwright"
+    },
+    {
+      "description": "Group TypeScript toolchain updates",
+      "matchPackageNames": ["typescript", "typescript-eslint", "@typescript-eslint/parser", "@typescript-eslint/eslint-plugin", "tsx"],
+      "groupName": "typescript-toolchain"
+    },
+    {
+      "description": "Group Vitest updates",
+      "matchPackagePatterns": ["vitest", "@vitest/*"],
+      "groupName": "vitest"
+    },
+    {
+      "description": "Auto-merge patch updates for dev deps after CI passes",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "requiredStatusChecks": ["Build · Lint · Typecheck · Test · Security"]
+    }
+  ],
+  "ignoreDeps": [],
+  "postUpgradeTasks": {
+    "commands": ["pnpm install --no-frozen-lockfile"],
+    "fileFilters": ["pnpm-lock.yaml"]
+  }
+}

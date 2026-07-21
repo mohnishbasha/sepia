@@ -1,0 +1,21 @@
+{
+  "description": "A button moves from ordinal position 1 to position 3 (role+name unchanged). Should remain stable.",
+  "before": [
+    { "handle": "e1", "role": "button", "name": "Cancel", "indent": 0 },
+    { "handle": "e2", "role": "button", "name": "Save Draft", "indent": 0 },
+    { "handle": "e3", "role": "button", "name": "Publish", "indent": 0 },
+    { "handle": "e4", "role": "button", "name": "Delete", "indent": 0 }
+  ],
+  "after": [
+    { "handle": "e1", "role": "button", "name": "Cancel", "indent": 0 },
+    { "handle": "e3", "role": "button", "name": "Publish", "indent": 0 },
+    { "handle": "e4", "role": "button", "name": "Delete", "indent": 0 },
+    { "handle": "e2", "role": "button", "name": "Save Draft", "indent": 0 }
+  ],
+  "expectations": {
+    "Save Draft": "stable",
+    "Cancel": "stable",
+    "Publish": "stable",
+    "Delete": "stable"
+  }
+}

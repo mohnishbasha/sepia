@@ -1,0 +1,20 @@
+{
+  "description": "One element removed from the list. Remaining elements stable; removed one stale.",
+  "before": [
+    { "handle": "e1", "role": "textbox", "name": "Email", "indent": 0 },
+    { "handle": "e2", "role": "textbox", "name": "Password", "indent": 0 },
+    { "handle": "e3", "role": "button", "name": "Sign in", "indent": 0 },
+    { "handle": "e4", "role": "button", "name": "Removed Button", "indent": 0 }
+  ],
+  "after": [
+    { "handle": "e1", "role": "textbox", "name": "Email", "indent": 0 },
+    { "handle": "e2", "role": "textbox", "name": "Password", "indent": 0 },
+    { "handle": "e3", "role": "button", "name": "Sign in", "indent": 0 }
+  ],
+  "expectations": {
+    "Email": "stable",
+    "Password": "stable",
+    "Sign in": "stable",
+    "Removed Button": "stale"
+  }
+}

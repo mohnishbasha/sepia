@@ -1,0 +1,130 @@
+{
+  "title": "Settings",
+  "url": "https://example.com/settings",
+  "axSnapshot": {
+    "role": "WebArea",
+    "name": "Settings",
+    "children": [
+      {
+        "role": "main",
+        "name": "",
+        "children": [
+          {
+            "role": "heading",
+            "name": "Settings",
+            "children": []
+          },
+          {
+            "role": "tablist",
+            "name": "Settings sections",
+            "children": [
+              {
+                "role": "tab",
+                "name": "Account",
+                "selected": true,
+                "children": []
+              },
+              {
+                "role": "tab",
+                "name": "Privacy",
+                "selected": false,
+                "children": []
+              },
+              {
+                "role": "tab",
+                "name": "Notifications",
+                "selected": false,
+                "children": []
+              }
+            ]
+          },
+          {
+            "role": "tabpanel",
+            "name": "Account",
+            "children": [
+              {
+                "role": "heading",
+                "name": "Account settings",
+                "children": []
+              },
+              {
+                "role": "generic",
+                "name": "",
+                "children": [
+                  {
+                    "role": "label",
+                    "name": "Display name",
+                    "children": []
+                  },
+                  {
+                    "role": "textbox",
+                    "name": "Display name",
+                    "value": "Alice",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "role": "generic",
+                "name": "",
+                "children": [
+                  {
+                    "role": "label",
+                    "name": "Email address",
+                    "children": []
+                  },
+                  {
+                    "role": "textbox",
+                    "name": "Email address",
+                    "value": "alice@example.com",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "role": "heading",
+                "name": "Email preferences",
+                "children": []
+              },
+              {
+                "role": "checkbox",
+                "name": "Receive product updates",
+                "checked": true,
+                "children": []
+              },
+              {
+                "role": "checkbox",
+                "name": "Receive security alerts",
+                "checked": true,
+                "children": []
+              },
+              {
+                "role": "checkbox",
+                "name": "Receive newsletter",
+                "checked": false,
+                "children": []
+              },
+              {
+                "role": "generic",
+                "name": "",
+                "children": [
+                  {
+                    "role": "button",
+                    "name": "Save",
+                    "children": []
+                  },
+                  {
+                    "role": "button",
+                    "name": "Cancel",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "groundTruth": ["Account", "Privacy", "Notifications", "Display name", "Save"]
+}

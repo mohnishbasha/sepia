@@ -1,0 +1,20 @@
+{
+  "description": "Known Chrome 130 fingerprint probe definitions",
+  "notes": "JA3/JA4 values require patched Chromium (make chromium-build). JS probes run via page.evaluate().",
+  "chrome-130-linux-x86_64": {
+    "jsProbes": {
+      "typeof navigator.webdriver": "undefined",
+      "navigator.vendor": "Google Inc.",
+      "window.chrome !== undefined": "true"
+    },
+    "ja3": {
+      "value": "8a2e744cd10f7327e9f8571a15614ebe",
+      "note": "Approximate; varies with server cipher negotiation. Confirm with JA3 echo server after patched build.",
+      "cipherSuites": "TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256, ..."
+    },
+    "ja4": {
+      "value": "t13d1516h2_8daaf6152771_b0da82dd1658",
+      "note": "Approximate. Confirm with JA4 echo server after patched build."
+    }
+  }
+}

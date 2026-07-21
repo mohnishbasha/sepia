@@ -1,0 +1,71 @@
+{
+  "title": "Sign in",
+  "url": "https://example.com/login",
+  "axSnapshot": {
+    "role": "WebArea",
+    "name": "Sign in",
+    "children": [
+      {
+        "role": "main",
+        "name": "",
+        "children": [
+          {
+            "role": "heading",
+            "name": "Sign in",
+            "children": []
+          },
+          {
+            "role": "generic",
+            "name": "",
+            "children": [
+              {
+                "role": "label",
+                "name": "Email",
+                "children": []
+              },
+              {
+                "role": "textbox",
+                "name": "Email",
+                "required": true,
+                "children": []
+              }
+            ]
+          },
+          {
+            "role": "generic",
+            "name": "",
+            "children": [
+              {
+                "role": "label",
+                "name": "Password",
+                "children": []
+              },
+              {
+                "role": "textbox",
+                "name": "Password",
+                "required": true,
+                "children": []
+              }
+            ]
+          },
+          {
+            "role": "button",
+            "name": "Sign in",
+            "children": []
+          },
+          {
+            "role": "link",
+            "name": "Forgot password?",
+            "children": []
+          },
+          {
+            "role": "link",
+            "name": "Create account",
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  "groundTruth": ["Sign in", "Email", "Password", "Forgot password?"]
+}

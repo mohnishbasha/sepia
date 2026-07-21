@@ -1,0 +1,133 @@
+{
+  "title": "Dashboard",
+  "url": "https://example.com/dashboard",
+  "axSnapshot": {
+    "role": "WebArea",
+    "name": "Dashboard",
+    "children": [
+      {
+        "role": "navigation",
+        "name": "Main navigation",
+        "children": [
+          {
+            "role": "link",
+            "name": "Home",
+            "children": []
+          },
+          {
+            "role": "link",
+            "name": "Reports",
+            "children": []
+          },
+          {
+            "role": "link",
+            "name": "Settings",
+            "children": []
+          }
+        ]
+      },
+      {
+        "role": "main",
+        "name": "",
+        "children": [
+          {
+            "role": "heading",
+            "name": "Dashboard",
+            "children": []
+          },
+          {
+            "role": "generic",
+            "name": "",
+            "children": [
+              {
+                "role": "button",
+                "name": "New Report",
+                "children": []
+              },
+              {
+                "role": "button",
+                "name": "Export Data",
+                "children": []
+              },
+              {
+                "role": "button",
+                "name": "Refresh",
+                "children": []
+              }
+            ]
+          },
+          {
+            "role": "table",
+            "name": "Activity summary",
+            "children": [
+              {
+                "role": "row",
+                "name": "",
+                "children": [
+                  {
+                    "role": "columnheader",
+                    "name": "Date",
+                    "children": []
+                  },
+                  {
+                    "role": "columnheader",
+                    "name": "Event",
+                    "children": []
+                  },
+                  {
+                    "role": "columnheader",
+                    "name": "Status",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "role": "row",
+                "name": "",
+                "children": [
+                  {
+                    "role": "cell",
+                    "name": "2026-07-19",
+                    "children": []
+                  },
+                  {
+                    "role": "cell",
+                    "name": "Report generated",
+                    "children": []
+                  },
+                  {
+                    "role": "cell",
+                    "name": "Complete",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "role": "row",
+                "name": "",
+                "children": [
+                  {
+                    "role": "cell",
+                    "name": "2026-07-18",
+                    "children": []
+                  },
+                  {
+                    "role": "cell",
+                    "name": "Data import",
+                    "children": []
+                  },
+                  {
+                    "role": "cell",
+                    "name": "Pending",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "groundTruth": ["Home", "Reports", "Dashboard", "New Report", "Export Data"]
+}

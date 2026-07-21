@@ -1,0 +1,167 @@
+{
+  "title": "Checkout",
+  "url": "https://example.com/checkout",
+  "axSnapshot": {
+    "role": "WebArea",
+    "name": "Checkout",
+    "children": [
+      {
+        "role": "main",
+        "name": "",
+        "children": [
+          {
+            "role": "heading",
+            "name": "Checkout",
+            "children": []
+          },
+          {
+            "role": "generic",
+            "name": "",
+            "children": [
+              {
+                "role": "heading",
+                "name": "Shipping information",
+                "children": []
+              },
+              {
+                "role": "generic",
+                "name": "",
+                "children": [
+                  {
+                    "role": "label",
+                    "name": "Full name",
+                    "children": []
+                  },
+                  {
+                    "role": "textbox",
+                    "name": "Name",
+                    "required": true,
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "role": "generic",
+                "name": "",
+                "children": [
+                  {
+                    "role": "label",
+                    "name": "Street address",
+                    "children": []
+                  },
+                  {
+                    "role": "textbox",
+                    "name": "Address",
+                    "required": true,
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "role": "generic",
+                "name": "",
+                "children": [
+                  {
+                    "role": "label",
+                    "name": "City",
+                    "children": []
+                  },
+                  {
+                    "role": "textbox",
+                    "name": "City",
+                    "required": true,
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "role": "generic",
+                "name": "",
+                "children": [
+                  {
+                    "role": "label",
+                    "name": "Country",
+                    "children": []
+                  },
+                  {
+                    "role": "combobox",
+                    "name": "Country",
+                    "value": "United States",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "role": "generic",
+                "name": "",
+                "children": [
+                  {
+                    "role": "checkbox",
+                    "name": "Save address for future orders",
+                    "checked": false,
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "generic",
+            "name": "",
+            "children": [
+              {
+                "role": "heading",
+                "name": "Order summary",
+                "children": []
+              },
+              {
+                "role": "table",
+                "name": "Items",
+                "children": [
+                  {
+                    "role": "row",
+                    "name": "",
+                    "children": [
+                      {
+                        "role": "columnheader",
+                        "name": "Item",
+                        "children": []
+                      },
+                      {
+                        "role": "columnheader",
+                        "name": "Price",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "role": "row",
+                    "name": "",
+                    "children": [
+                      {
+                        "role": "cell",
+                        "name": "Wireless Headphones",
+                        "children": []
+                      },
+                      {
+                        "role": "cell",
+                        "name": "$79.99",
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "button",
+            "name": "Place order",
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  "groundTruth": ["Checkout", "Name", "Address", "City", "Country", "Place order"]
+}
