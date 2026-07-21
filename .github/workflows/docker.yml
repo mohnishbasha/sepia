@@ -8,6 +8,9 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  # Dedicated tag for registry-based layer cache.
+  # Persists beyond the 7-day GHA cache TTL; survives runner rotation.
+  BUILDCACHE_REF: ghcr.io/${{ github.repository }}:buildcache
 
 jobs:
   build-push:
@@ -48,10 +51,21 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          # Build for amd64 only; add linux/arm64 here if multi-arch is needed
+          # (arm64 emulation via QEMU adds ~3× build time on amd64 runners).
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Two-layer cache strategy:
+          #   1. GHA cache (fast, per-branch, 10 GB limit, 7-day TTL)
+          #   2. Registry cache (persistent, survives runner rotation and cold starts)
+          # cache-from tries both; first hit wins.
+          cache-from: |
+            type=gha
+            type=registry,ref=${{ env.BUILDCACHE_REF }}
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=${{ env.BUILDCACHE_REF }},mode=max
           provenance: true
           sbom: true
