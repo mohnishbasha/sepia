@@ -11,7 +11,9 @@ export TMPDIR
         test-tokens test-mutation test-fingerprint \
         test-leak test-boundary test-resilience test-example \
         run-example lint fmt fmt-check typecheck security ci clean \
-        patch chromium-build patch-check
+        patch chromium-build patch-check \
+        docker-build docker-run docker-push \
+        helm-lint helm-package helm-install helm-uninstall
 
 # ── Help ──────────────────────────────────────────────────────────────────────
 
@@ -126,6 +128,53 @@ ci: ## Exact gate run by CI: build + lint + typecheck + test + security
 	$(MAKE) typecheck
 	$(MAKE) test
 	$(MAKE) security
+
+# ── Docker / OCI ──────────────────────────────────────────────────────────────
+
+DOCKER_IMAGE  ?= sepia
+DOCKER_TAG    ?= dev
+DOCKER_PORT   ?= 3000
+
+docker-build: ## Build OCI image. Usage: make docker-build [DOCKER_TAG=v0.1.0]
+	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+
+docker-run: ## Run the HTTP server in Docker. Usage: make docker-run SEPIA_API_KEY=sk-...
+	docker run --rm -p $(DOCKER_PORT):3000 \
+	  -e SEPIA_MODEL_ENDPOINT=$(SEPIA_MODEL_ENDPOINT) \
+	  -e SEPIA_MODEL=$(SEPIA_MODEL) \
+	  -e SEPIA_API_KEY=$(SEPIA_API_KEY) \
+	  $(DOCKER_IMAGE):$(DOCKER_TAG)
+
+docker-push: ## Tag and push to GHCR. Usage: make docker-push DOCKER_TAG=v0.1.0
+	docker tag $(DOCKER_IMAGE):$(DOCKER_TAG) ghcr.io/mohnishbasha/sepia:$(DOCKER_TAG)
+	docker push ghcr.io/mohnishbasha/sepia:$(DOCKER_TAG)
+
+# ── Helm ──────────────────────────────────────────────────────────────────────
+
+HELM_RELEASE  ?= sepia
+HELM_NS       ?= sepia
+HELM_CHART    := helm/sepia
+
+helm-lint: ## Lint and template-render the Helm chart
+	helm lint $(HELM_CHART)
+	helm template $(HELM_RELEASE) $(HELM_CHART) --namespace $(HELM_NS) | kubectl apply --dry-run=client -f -
+
+helm-package: ## Package the Helm chart into a .tgz
+	helm package $(HELM_CHART) --destination dist/
+
+helm-install: ## Install into the current kube context. Usage: make helm-install SEPIA_API_KEY=sk-...
+	kubectl create namespace $(HELM_NS) --dry-run=client -o yaml | kubectl apply -f -
+	kubectl create secret generic sepia-credentials \
+	  --namespace $(HELM_NS) \
+	  --from-literal=SEPIA_API_KEY=$(SEPIA_API_KEY) \
+	  --dry-run=client -o yaml | kubectl apply -f -
+	helm upgrade --install $(HELM_RELEASE) $(HELM_CHART) \
+	  --namespace $(HELM_NS) \
+	  --set existingSecret=sepia-credentials \
+	  --wait
+
+helm-uninstall: ## Uninstall from the current kube context
+	helm uninstall $(HELM_RELEASE) --namespace $(HELM_NS)
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 

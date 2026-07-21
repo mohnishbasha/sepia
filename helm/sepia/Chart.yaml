@@ -1,0 +1,16 @@
+apiVersion: v2
+name: sepia
+description: Secure AI browser engine — compact view, stable handles, coherent fingerprint
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - browser-automation
+  - ai
+  - playwright
+home: https://github.com/mohnishbasha/sepia
+sources:
+  - https://github.com/mohnishbasha/sepia
+maintainers:
+  - name: mohnishbasha
+    url: https://github.com/mohnishbasha

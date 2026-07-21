@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { serialize } from '../serializer/index.js';
 import type { AXSnapshot } from '../serializer/index.js';
@@ -96,6 +97,13 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
   };
   if (opts?.executablePath !== undefined) {
     launchOpts.executablePath = opts.executablePath;
+  }
+  // Chromium's sandbox requires SYS_ADMIN or user namespaces, which are
+  // unavailable in most container runtimes. Detect container via /.dockerenv
+  // or the explicit opt-out env var and add the required flags.
+  const inContainer = existsSync('/.dockerenv') || process.env['SEPIA_NO_SANDBOX'] === '1';
+  if (inContainer) {
+    launchOpts.args = ['--no-sandbox', '--disable-setuid-sandbox'];
   }
 
   const browser: Browser = await chromium.launch(launchOpts);

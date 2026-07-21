@@ -1,0 +1,55 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/mohnishbasha/sepia
+  pullPolicy: IfNotPresent
+  # Overrides the image tag; defaults to the chart's appVersion.
+  tag: ""
+
+service:
+  type: ClusterIP
+  port: 3000
+
+# Environment variables injected into every pod.
+# SEPIA_API_KEY should come from existingSecret (see below), not here.
+env:
+  SEPIA_MODEL_ENDPOINT: "https://api.anthropic.com/v1"
+  SEPIA_MODEL: "claude-sonnet-4-6"
+  SEPIA_HTTP_PORT: "3000"
+  SEPIA_MAX_CONCURRENT: "5"
+
+# Reference an existing Kubernetes Secret that holds SEPIA_API_KEY.
+# Create it with:
+#   kubectl create secret generic sepia-credentials \
+#     --from-literal=SEPIA_API_KEY=sk-ant-...
+existingSecret: ""
+existingSecretKey: "SEPIA_API_KEY"
+
+resources:
+  limits:
+    # Chromium is memory-hungry: 200-500 MB per session + Node overhead.
+    memory: "2Gi"
+    cpu: "2000m"
+  requests:
+    memory: "512Mi"
+    cpu: "500m"
+
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# Chromium sandbox options.
+# noSandbox: true  → adds --no-sandbox (portable; lower isolation).
+# noSandbox: false → requires privileged: true or SYS_ADMIN cap on the pod.
+chromium:
+  noSandbox: true
+
+nameOverride: ""
+fullnameOverride: ""
+podAnnotations: {}
+podSecurityContext: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

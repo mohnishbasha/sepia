@@ -1,0 +1,14 @@
+node_modules/
+examples/*/node_modules/
+dist/
+.vitest-cache/
+.tmp/
+coverage/
+*.tsbuildinfo
+.git/
+patches/chromium/
+bin/
+.env
+.env.*
+*.patch.rej
+.DS_Store
