@@ -1,9 +1,10 @@
 # Build Prompt: Sepia — Secure AI Browser Engine
 
-> **Build status (2026-07-20): Complete.**
+> **Build status (2026-07-21): Complete.**
 > Phase 0 (reasoning), Phase 1 (spec), Phase 2 (M0–M5 implementation), and Phase 3 (hardening) are all done.
 > `make ci` exits 0. 96 tests pass; 2 intentional todos (AC-F1/AC-F2 require `make chromium-build`).
 > See [`docs/phase3-addendum.md`](docs/phase3-addendum.md) for the full AC-\* coverage matrix.
+> Post-Phase 3: Playwright 1.61 (Chrome 149) compat, CDP AX migration, `chrome-149-linux-x86_64` preset, husky pre-commit hook. All 96 tests still pass.
 > This prompt is preserved as a historical artifact of how the project was initiated.
 
 ---

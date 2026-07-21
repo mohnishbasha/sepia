@@ -1,6 +1,6 @@
 # Sepia — Phase 3 Hardening Addendum
 
-> **Status: In progress (2026-07-20)**
+> **Status: Complete (2026-07-21)**
 > This document is an addendum to [`phase1-spec.md`](phase1-spec.md). It records what was built during Phase 3 hardening, deferred items, and the current AC-\* gate state. Do not duplicate into the main spec — cross-reference here instead.
 
 ---
@@ -58,13 +58,13 @@ The 2 todo items (AC-F1, AC-F2) are intentionally deferred — they require `mak
 
 ### Fingerprint (M4)
 
-| AC    | Description                                         | Status                                       |
-| ----- | --------------------------------------------------- | -------------------------------------------- |
-| AC-F1 | JA3 fingerprint matches Chrome 130 on Linux x86_64  | ⏭ **todo** — requires `make chromium-build` |
-| AC-F2 | JA4 fingerprint matches Chrome 130 on Linux x86_64  | ⏭ **todo** — requires `make chromium-build` |
-| AC-F3 | `navigator.webdriver` is absent or `undefined`      | ✅ pass — real browser probe                 |
-| AC-F4 | Full cross-signal coherence (UA, jsProbes) all pass | ✅ pass — real browser probe                 |
-| AC-F5 | Session does not start if coherence check fails     | ✅ pass — `validateAndStart` throws          |
+| AC    | Description                                         | Status                                                                                   |
+| ----- | --------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| AC-F1 | JA3 fingerprint matches Chrome 130 on Linux x86_64  | ⏭ **todo** — requires `make chromium-build`                                              |
+| AC-F2 | JA4 fingerprint matches Chrome 130 on Linux x86_64  | ⏭ **todo** — requires `make chromium-build`                                              |
+| AC-F3 | `navigator.webdriver` is absent or `undefined`      | ✅ pass — real browser probe                                                             |
+| AC-F4 | Full cross-signal coherence (UA, jsProbes) all pass | ✅ pass — `chrome-149-linux-x86_64` preset; UA probe dynamic from `preset.chromeVersion` |
+| AC-F5 | Session does not start if coherence check fails     | ✅ pass — `validateAndStart` throws                                                      |
 
 ### Example app (M3 + M5)
 
@@ -192,6 +192,30 @@ export interface SanitizeResult {
 }
 export function sanitizeForLLM(text: string): SanitizeResult;
 ```
+
+---
+
+## 7. Post-Phase 3 additions (2026-07-21)
+
+These changes were made after the Phase 3 gate passed. Test count remains **96 pass, 2 todo**.
+
+### Playwright 1.61 compatibility
+
+Playwright 1.61 ships Chrome 149 headless shell (build 1228) and removed `page.accessibility.snapshot()`.
+
+**Changes made:**
+
+- `engine/index.ts` — replaced `page.accessibility.snapshot()` with CDP `Accessibility.getFullAXTree` via `page.context().newCDPSession(page)`. Added `collectVisible()` to promote ignored wrapper nodes, restoring the same tree structure as the old API (AC-AG1, AC-AG2).
+- `fingerprint/index.ts` — added `chrome-149-linux-x86_64` preset matching the actual Playwright 1.61 headless shell (Chrome 149.0.7827.55). Made the UA probe dynamic: uses `preset.chromeVersion.split('.')[0]` instead of the hardcoded `"Chrome/130"` string. Browser tests (AC-F3/F4/F5) now use this preset; unit tests retain `chrome-130-linux-x86_64`.
+- `Makefile` + CI — updated `playwright install` to `--only-shell` (required in Playwright 1.61).
+
+### Dependency pins updated to latest stable
+
+All deps upgraded to latest stable as of 2026-07-21: Playwright 1.61.1, TypeScript 5.9.3 (pinned below 6.x for typescript-eslint compat), vitest 3.2.7, Node 24.18.0, all GitHub Actions SHAs updated to Node-24-compatible versions.
+
+### Pre-commit hook (husky + lint-staged)
+
+Added `husky@9.1.7` + `lint-staged@16.1.2`. Pre-commit hook runs ESLint (`--max-warnings=0`) and Prettier `--check` on staged TypeScript/JS files; Prettier `--check` on staged JSON/Markdown. Catches formatting and lint regressions before they reach CI.
 
 ---
 

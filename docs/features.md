@@ -254,9 +254,16 @@ Sepia patches Chromium at the BoringSSL source level so the TLS ClientHello itse
 | System fonts              | Profile-consistent subset               |
 | Timezone / locale         | Profile-consistent                      |
 
-**Validation harness:** before every session starts, `validateCoherence()` runs all jsProbes in the browser context. If any probe fails, the session does not start — `validateAndStart` throws.
+**Validation harness:** before every session starts, `validateCoherence()` runs all jsProbes in the browser context. If any probe fails, the session does not start — `validateAndStart` throws. The UA probe is derived dynamically from `preset.chromeVersion` so it stays correct as the Chrome major version changes.
 
-**Built-in preset:** `chrome-130-linux-x86_64`
+**Built-in presets:**
+
+| Preset                    | Purpose                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------- |
+| `chrome-130-linux-x86_64` | Target spoofed identity — TLS + UA presents as Chrome 130 on Linux x86_64                |
+| `chrome-149-linux-x86_64` | Coherence testing with Playwright 1.61 headless shell (Chrome 149.0.7827.55, build 1228) |
+
+The default browser profile is `chrome-130-linux-x86_64`. The `chrome-149` preset is used by fingerprint tests to validate that jsProbes and UA checks pass against the actual installed browser binary.
 
 **Patched Chromium binary:** `make chromium-build` applies a 4-layer patch stack (ungoogled-chromium → rebrowser-patches → BoringSSL JA3/JA4 → profile-coherence). Takes 2–4 hours on first build. Stock Playwright Chromium is used for all other features.
 
@@ -304,6 +311,7 @@ Nothing else. The raw DOM, HTML, screenshots, credentials, and session cookies n
 | Stale handle enforcement       | Actions on stale handles return error immediately; never silently act on wrong element       |
 | One-way module dependency      | Core modules cannot import from agent; enforced by ESLint, fails `make lint`                 |
 | Dependency audit               | `make security` runs `pnpm audit --audit-level=critical`; fails CI on critical CVEs          |
+| Pre-commit hook                | husky + lint-staged runs ESLint and Prettier on staged files before every commit             |
 
 **Injection pattern families detected by `sanitizeForLLM()`:**
 
