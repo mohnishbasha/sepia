@@ -47,7 +47,8 @@
     "test:resilience": "vitest run tests/resilience",
     "test:example": "vitest run tests/example",
     "dev": "tsx watch cli/index.ts",
-    "security:audit": "pnpm audit --audit-level=critical"
+    "security:audit": "pnpm audit --audit-level=critical",
+    "prepare": "husky"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
@@ -58,12 +59,23 @@
     "@types/node": "26.1.1",
     "@vitest/coverage-v8": "3.2.7",
     "eslint": "10.7.0",
+    "husky": "9.1.7",
+    "lint-staged": "16.1.2",
     "prettier": "3.9.6",
     "tiktoken": "1.0.22",
     "tsx": "4.23.1",
     "typescript": "5.9.3",
     "typescript-eslint": "8.65.0",
     "vitest": "3.2.7"
+  },
+  "lint-staged": {
+    "*.{ts,mjs}": [
+      "eslint --max-warnings=0",
+      "prettier --check"
+    ],
+    "*.{json,md}": [
+      "prettier --check"
+    ]
   },
   "pnpm": {
     "onlyBuiltDependencies": [
