@@ -27,43 +27,233 @@ Header patching is not enough. Sepia patches Chromium's BoringSSL layer so the T
 
 ---
 
-## Quickstart
+## Build
 
-**Prerequisites:** Git, Node.js 22.11.0 (`nvm install 22.11.0`), a model API key or local [Ollama](https://ollama.ai) instance.
+### Prerequisites
+
+- Git
+- Node.js 22.11.0 — `nvm install 22.11.0`
+- A model API key or a local [Ollama](https://ollama.ai) instance
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/mohinishbasha/sepia.git
+git clone https://github.com/mohnishbasha/sepia.git
 cd sepia
-make setup                      # installs pnpm, deps, and Playwright's Chromium
+make setup    # installs pnpm, all deps, and Playwright's Chromium binary
+make build    # compiles TypeScript → dist/
+```
 
-# 2. Build
-make build
+For watch mode during development:
 
-# 3. Run your first goal (hosted model)
+```bash
+make dev
+```
+
+---
+
+## Run
+
+Sepia has three runtime modes: CLI one-shot, HTTP server, and MCP stdio.
+
+### CLI — one-shot agent run
+
+```bash
 export SEPIA_MODEL_ENDPOINT=https://api.anthropic.com/v1
 export SEPIA_MODEL=claude-sonnet-4-6
 export SEPIA_API_KEY=sk-ant-...
-make run ARGS='run "What is the current Node.js LTS version on nodejs.org?"'
 
-# 4. Or use a local model (no API key needed)
+make run ARGS='run "What is the current Node.js LTS version on nodejs.org?"'
+```
+
+Or with a local model (no API key needed):
+
+```bash
 export SEPIA_MODEL_ENDPOINT=http://localhost:11434/v1
 export SEPIA_MODEL=llama3.1
 make run ARGS='run "What is the current Node.js LTS version on nodejs.org?"'
-
-# 5. Run CI (tests + lint + typecheck + security)
-make ci
 ```
 
-**Expected output:**
+Output is a `RunTrace` JSON object on stdout:
+
 ```json
 {
   "goal": "What is the current Node.js LTS version on nodejs.org?",
   "outcome": "success",
-  "answer": "Node.js 22.x (Iron) LTS",
   "totalSteps": 3,
-  "totalTokens": 2140
+  "totalTokens": 2140,
+  "steps": [...]
 }
+```
+
+### HTTP server
+
+Start a long-running HTTP API that accepts goals over the network:
+
+```bash
+export SEPIA_MODEL_ENDPOINT=https://api.anthropic.com/v1
+export SEPIA_MODEL=claude-sonnet-4-6
+export SEPIA_API_KEY=sk-ant-...
+
+make run ARGS='serve --port 3000 --max-concurrent 5'
+```
+
+**`POST /run`** — submit a goal, get a `RunTrace` back:
+
+```bash
+curl -s -X POST http://localhost:3000/run \
+  -H 'Content-Type: application/json' \
+  -d '{"goal": "What is the current Node.js LTS version on nodejs.org?"}' \
+  | jq .outcome
+```
+
+Returns `200` on `success`, `422` on `budget_exceeded` or `error`, `503` when the concurrent session cap is reached.
+
+**`GET /health`** — liveness check:
+
+```bash
+curl http://localhost:3000/health
+# {"ok":true,"version":"0.1.0","inflight":0,"maxConcurrent":5}
+```
+
+**Environment variables for the HTTP server:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `SEPIA_HTTP_PORT` | `3000` | Port to listen on |
+| `SEPIA_MAX_CONCURRENT` | `5` | Max concurrent agent runs |
+| `SEPIA_MODEL_ENDPOINT` | `https://api.anthropic.com/v1` | Model API base URL |
+| `SEPIA_MODEL` | `claude-sonnet-4-6` | Model name |
+| `SEPIA_API_KEY` | — | API key (optional for local models) |
+
+### MCP stdio
+
+For use as a tool server with Claude Desktop or any MCP 2024-11 host:
+
+```bash
+make run ARGS='mcp'
+```
+
+Registers 12 tools: `open`, `observe`, `click`, `type`, `select`, `check`, `hover`, `scroll`, `press`, `read`, `back`, `forward`.
+
+---
+
+## Deploy
+
+### Docker
+
+Build the OCI image:
+
+```bash
+make docker-build                        # builds sepia:dev
+make docker-build DOCKER_TAG=v0.1.0      # tag a release
+```
+
+Run the HTTP server in a container:
+
+```bash
+make docker-run \
+  SEPIA_MODEL_ENDPOINT=https://api.anthropic.com/v1 \
+  SEPIA_MODEL=claude-sonnet-4-6 \
+  SEPIA_API_KEY=sk-ant-...
+```
+
+Or run a one-shot goal:
+
+```bash
+docker run --rm \
+  -e SEPIA_MODEL_ENDPOINT=https://api.anthropic.com/v1 \
+  -e SEPIA_MODEL=claude-sonnet-4-6 \
+  -e SEPIA_API_KEY=sk-ant-... \
+  sepia:dev run "What is the Node.js LTS version?"
+```
+
+Chromium's sandbox is automatically disabled inside containers (`/.dockerenv` detected → `--no-sandbox`). No `--privileged` flag required.
+
+**OCI images** are published to `ghcr.io/mohnishbasha/sepia` on every `v*` tag push via `.github/workflows/docker.yml`. Tags: `v0.1.0`, `v0.1`, `v0`, `sha-<sha>`.
+
+```bash
+docker pull ghcr.io/mohnishbasha/sepia:v0.1.0
+```
+
+### Kubernetes (Helm)
+
+Prerequisites: `kubectl` pointed at your cluster, `helm` 3.x installed.
+
+**Quick install:**
+
+```bash
+# 1. Create the API key secret
+kubectl create namespace sepia
+kubectl create secret generic sepia-credentials \
+  --namespace sepia \
+  --from-literal=SEPIA_API_KEY=sk-ant-...
+
+# 2. Install the chart
+helm upgrade --install sepia helm/sepia \
+  --namespace sepia \
+  --set existingSecret=sepia-credentials \
+  --set env.SEPIA_MODEL_ENDPOINT=https://api.anthropic.com/v1 \
+  --set env.SEPIA_MODEL=claude-sonnet-4-6 \
+  --wait
+```
+
+Or with `make`:
+
+```bash
+make helm-install SEPIA_API_KEY=sk-ant-...
+```
+
+**What gets deployed:**
+
+| Resource | Default |
+|---|---|
+| Deployment | 2 replicas (managed by HPA) |
+| Service | ClusterIP on port 3000 |
+| HorizontalPodAutoscaler | 1–10 replicas, scale at 70% CPU |
+| Memory limit per pod | 2 Gi (Chromium is memory-hungry) |
+| CPU limit per pod | 2 000m |
+
+**Key `values.yaml` overrides:**
+
+```yaml
+# helm/sepia/values.yaml — common overrides
+replicaCount: 2
+
+image:
+  repository: ghcr.io/mohnishbasha/sepia
+  tag: "v0.1.0"           # pin to a release
+
+env:
+  SEPIA_MODEL_ENDPOINT: "https://api.anthropic.com/v1"
+  SEPIA_MODEL: "claude-sonnet-4-6"
+  SEPIA_MAX_CONCURRENT: "5"
+
+existingSecret: sepia-credentials   # kubectl secret holding SEPIA_API_KEY
+
+resources:
+  limits:
+    memory: "2Gi"
+    cpu: "2000m"
+
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+chromium:
+  noSandbox: true    # false requires privileged: true or SYS_ADMIN cap
+```
+
+Lint and dry-run the chart before applying:
+
+```bash
+make helm-lint
+```
+
+Uninstall:
+
+```bash
+make helm-uninstall
 ```
 
 ---
@@ -104,21 +294,22 @@ See [`config/index.ts`](config/index.ts) for the full typed schema.
 ## Architecture
 
 ```
-interfaces/mcp ──→ agent
-interfaces/sdk ──→ agent
-         cli   ──→ agent + config
+interfaces/http ──→ agent + config
+interfaces/mcp  ──→ agent
+interfaces/sdk  ──→ agent
+            cli ──→ agent + config + interfaces/http
 
-         agent ──→ actions + serializer + resolver + engine + privacy + telemetry
+          agent ──→ actions + serializer + resolver + engine + privacy + telemetry
 
-       actions ──→ engine + resolver
-    serializer ──→ types (no other sepia imports)
-      resolver ──→ types (no other sepia imports)
-        engine ──→ fingerprint + config
-   fingerprint ──→ types (no other sepia imports)
-       privacy ──→ types (no other sepia imports)
-     telemetry ──→ types (no other sepia imports)
-        config ──→ types (no other sepia imports)
-         types ──→ (no sepia imports)
+        actions ──→ engine + resolver
+     serializer ──→ types (no other sepia imports)
+       resolver ──→ types (no other sepia imports)
+         engine ──→ fingerprint + config
+    fingerprint ──→ types (no other sepia imports)
+        privacy ──→ types (no other sepia imports)
+      telemetry ──→ types (no other sepia imports)
+         config ──→ types (no other sepia imports)
+          types ──→ (no sepia imports)
 ```
 
 **One-way rule:** Lower layers never import from higher layers. The action layer never `eval`s model text. Enforced by ESLint `no-restricted-imports` rules; violations fail `make lint`.
