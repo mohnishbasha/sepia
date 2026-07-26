@@ -115,9 +115,9 @@ tests:
       litellm.configSecret: litellm-config
     asserts:
       - isNotEmpty:
-          path: spec.volumes
+          path: spec.template.spec.volumes
       - contains:
-          path: spec.volumes
+          path: spec.template.spec.volumes
           content:
             name: litellm-config
             secret:
