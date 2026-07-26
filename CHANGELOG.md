@@ -9,6 +9,17 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+#### Security (SR-10)
+
+- **Per-domain rate limiting** — `security.rateLimitMs` config field (env: `SEPIA_RATE_LIMIT_MS`). When set, `engine.open()` waits the minimum interval between navigations to the same hostname. Uses a per-hostname last-request clock; independent domains are tracked separately.
+- **robots.txt awareness** — `security.robotsAwareness` config field (env: `SEPIA_ROBOTS_AWARENESS=true`). When enabled, `engine.open()` fetches and caches the target domain's `robots.txt` before navigating. URLs matched by `Disallow:` return `{ ok: false, error: { code: 'ROBOTS_DISALLOWED' } }`. Robots.txt is fetched with a 5-second timeout; any network failure fails open (navigation proceeds). Cache TTL: 5 minutes.
+- **`Crawl-delay` respected as rate-limit floor** — when `robotsAwareness` is enabled and the robots.txt specifies a `Crawl-delay`, that value is used as the minimum interval if it is larger than `rateLimitMs`.
+- **`security/index.ts`** — new module: `createRateLimiter()`, `createRobotsCache(agentName?)`, `parseRobotsForAgent()` (exported for testing), `isPathAllowed()`. Pure module — no browser, no LLM calls. Added to `eslint.config.mjs` core module list; cannot import from upper layers.
+- **`ROBOTS_DISALLOWED` error code** — added to `ErrorCode` union in `types/index.ts`.
+- **30 new unit tests** in `tests/unit/security.test.ts` — covers parser (wildcard/named agent, CRLF, comments, specificity), path-matching rules (longest-match, Allow-beats-Disallow), rate-limiter timing, and robots cache (mocked fetch, fail-open, TTL, crawl-delay, named agent priority).
+
 ---
 
 ## [0.2.0] — 2026-07-21

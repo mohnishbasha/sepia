@@ -15,7 +15,7 @@ Sepia is built in strict phases. Do not write implementation code before the cur
 | 2     | Implement, test-first. Each milestone maps to numbered FRs. | `make ci` green; acceptance tests pass  |
 | 3     | Harden and verify. Full validation harness.                 | All AC-\* tests pass; spec matches code |
 
-**Current status:** Phase 3 complete. 96 tests passing (2 permanent todos: AC-F1/AC-F2 require `make chromium-build`). See [`docs/phase3-addendum.md`](docs/phase3-addendum.md) for the full AC-\* coverage matrix and hardening details.
+**Current status:** Phase 3 complete. 126 tests passing (2 permanent todos: AC-F1/AC-F2 require `make chromium-build`). See [`docs/phase3-addendum.md`](docs/phase3-addendum.md) for the full AC-\* coverage matrix and hardening details.
 
 See [`docs/phase1-spec.md`](docs/phase1-spec.md) for the numbered functional requirements (FR-_) and acceptance criteria (AC-_) that govern implementation.
 
@@ -44,9 +44,10 @@ serializer/     → types only
 resolver/       → types only
 fingerprint/    → types only
 privacy/        → types only
+security/       → types only
 telemetry/      → types only
 actions/        → types, serializer, resolver
-engine/         → types, serializer, actions, fingerprint, config
+engine/         → types, serializer, actions, fingerprint, config, security
 agent/          → types, config, serializer, resolver, actions, engine, privacy, telemetry
 interfaces/*    → agent, config, types
 cli/            → agent, config, types

@@ -28,7 +28,7 @@ export default tseslint.config(
     },
   },
 
-  // Core modules: serializer, resolver, fingerprint, privacy, telemetry, config, types
+  // Core modules: serializer, resolver, fingerprint, privacy, security, telemetry, config, types
   // must NOT import from agent, actions, engine, interfaces, or cli.
   {
     files: [
@@ -36,6 +36,7 @@ export default tseslint.config(
       'resolver/**/*.ts',
       'fingerprint/**/*.ts',
       'privacy/**/*.ts',
+      'security/**/*.ts',
       'telemetry/**/*.ts',
       'config/**/*.ts',
       'types/**/*.ts',

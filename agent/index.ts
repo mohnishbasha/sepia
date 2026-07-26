@@ -160,6 +160,14 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
         const profile = createNamedProfile(sessionId, config.browser.profileStorePath);
         engineOpts.profileDir = profile.profileDir;
       }
+      if (config.security.rateLimitMs !== undefined || config.security.robotsAwareness) {
+        engineOpts.security = {
+          robotsAwareness: config.security.robotsAwareness,
+          ...(config.security.rateLimitMs !== undefined
+            ? { rateLimitMs: config.security.rateLimitMs }
+            : {}),
+        };
+      }
       const engine = await createEngine(engineOpts);
 
       const client = new OpenAI({

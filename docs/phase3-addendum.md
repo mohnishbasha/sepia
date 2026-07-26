@@ -143,11 +143,9 @@ make test-fingerprint        # AC-F1 and AC-F2 will run (currently .todo)
 
 These tests exist in `tests/fingerprint/placeholder.test.ts` as `it.skip(...)` with explicit skip messages. No code change is needed once the binary is available.
 
-### SR-10 — Per-domain rate limiting and robots.txt hooks
+### ~~SR-10 — Per-domain rate limiting and robots.txt hooks~~ ✅ Implemented
 
-**What:** Configurable per-domain minimum interval between requests; optional robots.txt awareness.
-
-**Why deferred:** Both features are disabled by default (per the spec). The config schema already has `security.robotsAwareness` and `security.rateLimitMs` fields. Stub wiring exists; full enforcement hook is deferred to a future maintenance release.
+See `security/index.ts`, `tests/unit/security.test.ts`, and the `[Unreleased]` CHANGELOG section for full details. Both features remain off by default; enabled via `security.rateLimitMs` / `security.robotsAwareness` config or `SEPIA_RATE_LIMIT_MS` / `SEPIA_ROBOTS_AWARENESS` env vars.
 
 ### NFR-6 — 10 concurrent session load test
 

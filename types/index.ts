@@ -13,6 +13,7 @@ export type ErrorCode =
   | 'TIMEOUT'
   | 'BUDGET_EXCEEDED'
   | 'INVALID_URL'
+  | 'ROBOTS_DISALLOWED'
   | 'PROMPT_INJECTION_DETECTED'
   | 'UNKNOWN';
 

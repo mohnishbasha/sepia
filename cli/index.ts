@@ -42,6 +42,9 @@ async function runCommand(args: string[]): Promise<void> {
     endpoint ?? process.env['SEPIA_MODEL_ENDPOINT'] ?? 'https://api.anthropic.com/v1';
   const modelName = model ?? process.env['SEPIA_MODEL'] ?? 'claude-sonnet-4-6';
   const apiKey = process.env['SEPIA_API_KEY'];
+  const robotsAwareness = process.env['SEPIA_ROBOTS_AWARENESS'] === 'true';
+  const rateLimitMsRaw = process.env['SEPIA_RATE_LIMIT_MS'];
+  const rateLimitMs = rateLimitMsRaw !== undefined ? Number(rateLimitMsRaw) : undefined;
 
   const config = mergeConfig({
     model: {
@@ -51,6 +54,10 @@ async function runCommand(args: string[]): Promise<void> {
       ...(apiKey !== undefined ? { apiKey } : {}),
     },
     privacy: { telemetry: verbose },
+    security: {
+      robotsAwareness,
+      ...(rateLimitMs !== undefined ? { rateLimitMs } : {}),
+    },
   });
 
   const agent = createAgent(config);
@@ -82,6 +89,9 @@ function serveCommand(args: string[]): void {
   const modelName = process.env['SEPIA_MODEL'] ?? 'claude-sonnet-4-6';
   const apiKey = process.env['SEPIA_API_KEY'];
   const serverApiKey = process.env['SEPIA_SERVER_API_KEY'];
+  const robotsAwareness = process.env['SEPIA_ROBOTS_AWARENESS'] === 'true';
+  const rateLimitMsRaw = process.env['SEPIA_RATE_LIMIT_MS'];
+  const rateLimitMs = rateLimitMsRaw !== undefined ? Number(rateLimitMsRaw) : undefined;
 
   const config = mergeConfig({
     model: {
@@ -89,6 +99,10 @@ function serveCommand(args: string[]): void {
       model: modelName,
       maxTokensPerStep: 100_000,
       ...(apiKey !== undefined ? { apiKey } : {}),
+    },
+    security: {
+      robotsAwareness,
+      ...(rateLimitMs !== undefined ? { rateLimitMs } : {}),
     },
   });
 

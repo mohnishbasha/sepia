@@ -12,6 +12,8 @@ import type {
   WaitConditionType,
 } from '../types/index.js';
 import type { HandleMap } from '../resolver/index.js';
+import { createRateLimiter, createRobotsCache } from '../security/index.js';
+import type { RateLimiter, RobotsCache } from '../security/index.js';
 
 export type { CompactView, ActionResult, ReadResult, WaitResult, TabInfo };
 
@@ -22,6 +24,10 @@ export interface EngineOptions {
   userAgent?: string;
   viewport?: { width: number; height: number };
   humanTiming?: boolean;
+  security?: {
+    rateLimitMs?: number;
+    robotsAwareness?: boolean;
+  };
 }
 
 export interface SepiaEngine {
@@ -165,6 +171,14 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
 
   const page: Page = await context.newPage();
 
+  // SR-10: rate limiter and robots cache — created only when the feature is enabled.
+  const rateLimiter: RateLimiter | null =
+    opts?.security?.rateLimitMs !== undefined || opts?.security?.robotsAwareness === true
+      ? createRateLimiter()
+      : null;
+  const robotsCache: RobotsCache | null =
+    opts?.security?.robotsAwareness === true ? createRobotsCache() : null;
+
   // Per-engine handle map — reset on navigation to new origin
   const handleMap: HandleMap = createHandleMap();
   let lastOrigin = '';
@@ -203,6 +217,34 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
           },
         };
       }
+
+      // SR-10: robots.txt check before any navigation
+      if (robotsCache !== null) {
+        const allowed = await robotsCache.isAllowed(url);
+        if (!allowed) {
+          return {
+            ok: false,
+            confidence: 0,
+            error: {
+              code: 'ROBOTS_DISALLOWED',
+              message: `Blocked by robots.txt: ${url}`,
+            },
+          };
+        }
+      }
+
+      // SR-10: rate limiting — honour robots.txt Crawl-delay as a floor
+      if (rateLimiter !== null) {
+        try {
+          const hostname = new URL(url).hostname;
+          const crawlDelay = robotsCache !== null ? await robotsCache.crawlDelayMs(url) : null;
+          const effectiveMs = Math.max(opts?.security?.rateLimitMs ?? 0, crawlDelay ?? 0);
+          if (effectiveMs > 0) await rateLimiter.enforce(hostname, effectiveMs);
+        } catch {
+          // invalid URL already caught above
+        }
+      }
+
       try {
         maybeResetHandles(url);
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
