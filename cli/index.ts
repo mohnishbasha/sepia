@@ -9,7 +9,7 @@ function printUsage(): void {
   process.stderr.write(
     'Usage:\n' +
       '  sepia run "<goal>" [--model X] [--endpoint Y] [--verbose] [--answer-only]\n' +
-      '  sepia serve [--port 3000] [--max-concurrent 5]\n' +
+      '  sepia serve [--port 3000] [--max-concurrent 5] [--allow-unauthenticated]\n' +
       '  sepia mcp\n',
   );
 }
@@ -83,6 +83,7 @@ async function runCommand(args: string[]): Promise<void> {
 function serveCommand(args: string[]): void {
   let port = Number(process.env['SEPIA_HTTP_PORT'] ?? '3000');
   let maxConcurrent = Number(process.env['SEPIA_MAX_CONCURRENT'] ?? '5');
+  let allowUnauthenticated = process.env['SEPIA_ALLOW_UNAUTHENTICATED'] === 'true';
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -90,6 +91,8 @@ function serveCommand(args: string[]): void {
       port = Number(args[++i]);
     } else if (arg === '--max-concurrent' && i + 1 < args.length) {
       maxConcurrent = Number(args[++i]);
+    } else if (arg === '--allow-unauthenticated') {
+      allowUnauthenticated = true;
     }
   }
 
@@ -114,7 +117,13 @@ function serveCommand(args: string[]): void {
     },
   });
 
-  startServer({ port, maxConcurrent, config, ...(serverApiKey ? { serverApiKey } : {}) });
+  startServer({
+    port,
+    maxConcurrent,
+    config,
+    allowUnauthenticated,
+    ...(serverApiKey ? { serverApiKey } : {}),
+  });
 }
 
 async function mcpCommand(): Promise<void> {

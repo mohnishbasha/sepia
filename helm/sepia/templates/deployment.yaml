@@ -48,6 +48,16 @@ spec:
                   name: {{ .Values.existingSecret }}
                   key: {{ .Values.existingSecretKey }}
             {{- end }}
+            {{- if .Values.serverAuth.existingSecret }}
+            - name: SEPIA_SERVER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.serverAuth.existingSecret }}
+                  key: {{ .Values.serverAuth.existingSecretKey }}
+            {{- else if .Values.serverAuth.allowUnauthenticated }}
+            - name: SEPIA_ALLOW_UNAUTHENTICATED
+              value: "true"
+            {{- end }}
             {{- if .Values.litellm.enabled }}
             - name: SEPIA_MODEL_ENDPOINT
               value: "http://localhost:{{ .Values.litellm.port }}/v1"
