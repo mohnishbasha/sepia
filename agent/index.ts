@@ -156,10 +156,20 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
     async run(goal: string): Promise<RunTrace> {
       // Bound the retry sleep once, up front. An unbounded duration reaching
       // setTimeout parks the run (and, on the HTTP server, a concurrency slot)
-      // for as long as the caller likes (CodeQL js/resource-exhaustion).
-      let backoffMs = config.agent.retryBackoffMs;
-      if (!Number.isFinite(backoffMs) || backoffMs < 0) backoffMs = 0;
-      if (backoffMs > MAX_RETRY_BACKOFF_MS) backoffMs = MAX_RETRY_BACKOFF_MS;
+      // for as long as the caller likes.
+      //
+      // Written as a relational comparison rather than Math.min/max on purpose:
+      // the value must be *consumed on the branch where the comparison proves it
+      // small*. A `Math.min` clamp reads the same to a human but propagates the
+      // original value's provenance, so it does not establish the bound for
+      // static analysis (CodeQL js/resource-exhaustion).
+      const configuredBackoff = config.agent.retryBackoffMs;
+      const backoffMs =
+        !Number.isFinite(configuredBackoff) || configuredBackoff < 0
+          ? 0
+          : configuredBackoff > MAX_RETRY_BACKOFF_MS
+            ? MAX_RETRY_BACKOFF_MS
+            : configuredBackoff;
 
       const runId = generateId();
       const sessionId = generateId();

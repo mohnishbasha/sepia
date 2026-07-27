@@ -75,9 +75,12 @@ const BROWSER_FIELDS: Record<string, FieldSpec> = {
 /** Coerce one value against its spec. Returns undefined to drop the field. */
 function coerce(value: unknown, spec: FieldSpec): unknown {
   switch (spec.kind) {
-    case 'number':
+    case 'number': {
       if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-      return Math.min(spec.max, Math.max(spec.min, value));
+      if (value < spec.min) return spec.min;
+      if (value > spec.max) return spec.max;
+      return value;
+    }
     case 'boolean':
       return typeof value === 'boolean' ? value : undefined;
     case 'enum':

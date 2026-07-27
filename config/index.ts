@@ -120,7 +120,9 @@ function bounded(
   fallback: number,
 ): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
-  return Math.min(bounds.max, Math.max(bounds.min, value));
+  if (value < bounds.min) return bounds.min;
+  if (value > bounds.max) return bounds.max;
+  return value;
 }
 
 export function mergeConfig(overrides: DeepPartial<SepiaConfig>): SepiaConfig {
