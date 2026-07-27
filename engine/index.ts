@@ -23,13 +23,14 @@ import type {
   WaitResult,
   TabInfo,
   WaitConditionType,
+  ScreenshotResult,
 } from '../types/index.js';
 import type { HandleMap } from '../resolver/index.js';
 import { createRateLimiter, createRobotsCache } from '../security/index.js';
 import type { RateLimiter, RobotsCache } from '../security/index.js';
 import { getPreset, validateAndStart } from '../fingerprint/index.js';
 
-export type { CompactView, ActionResult, ReadResult, WaitResult, TabInfo };
+export type { CompactView, ActionResult, ReadResult, WaitResult, TabInfo, ScreenshotResult };
 
 export interface EngineOptions {
   executablePath?: string;
@@ -66,6 +67,7 @@ export interface SepiaEngine {
   scroll: (target: 'up' | 'down' | string, distance?: number) => Promise<ActionResult>;
   press: (key: string) => Promise<ActionResult>;
   read: (handle: string) => Promise<ReadResult>;
+  screenshot: (opts?: { path?: string; fullPage?: boolean }) => Promise<ScreenshotResult>;
   wait: (condition: WaitConditionType, timeoutMs?: number) => Promise<WaitResult>;
   back: () => Promise<ActionResult>;
   forward: () => Promise<ActionResult>;
@@ -628,6 +630,22 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
             handle,
           },
         };
+      }
+    },
+
+    async screenshot(shotOpts?: { path?: string; fullPage?: boolean }): Promise<ScreenshotResult> {
+      try {
+        const buffer = await page.screenshot({
+          fullPage: shotOpts?.fullPage ?? false,
+          ...(shotOpts?.path !== undefined ? { path: shotOpts.path } : {}),
+        });
+        // A path means the caller wants an artefact on disk; otherwise hand back
+        // the bytes. Either way this never enters the model context.
+        return shotOpts?.path !== undefined
+          ? { ok: true, path: shotOpts.path }
+          : { ok: true, base64: buffer.toString('base64') };
+      } catch (err) {
+        return { ok: false, error: { code: 'UNKNOWN', message: String(err) } };
       }
     },
 

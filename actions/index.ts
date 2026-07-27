@@ -7,11 +7,20 @@ import type {
   WaitResult,
   TabInfo,
   CompactView,
+  ScreenshotResult,
 } from '../types/index.js';
 import type { SepiaEngine } from '../engine/index.js';
 
 // Re-export shared action result types so callers can import from actions/ or types/
-export type { ErrorCode, ActionResult, ActionError, ReadResult, WaitResult, TabInfo };
+export type {
+  ErrorCode,
+  ActionResult,
+  ActionError,
+  ReadResult,
+  WaitResult,
+  TabInfo,
+  ScreenshotResult,
+};
 
 export type ActionName =
   | 'click'
@@ -22,6 +31,7 @@ export type ActionName =
   | 'scroll'
   | 'press'
   | 'read'
+  | 'screenshot'
   | 'observe'
   | 'wait'
   | 'open'
@@ -41,6 +51,7 @@ export const ACTION_NAMES: Set<ActionName> = new Set([
   'scroll',
   'press',
   'read',
+  'screenshot',
   'observe',
   'wait',
   'open',
@@ -67,6 +78,8 @@ export interface TypedAction {
   scrollDistance?: number;
   key?: string;
   url?: string;
+  path?: string;
+  fullPage?: boolean;
   condition?: WaitConditionType;
   timeoutMs?: number;
   tabId?: string;
@@ -164,6 +177,11 @@ export function parseAction(raw: unknown): TypedAction {
       optionalBoolean(obj, 'checked', action);
       break;
 
+    case 'screenshot':
+      optionalString(obj, 'path', action);
+      optionalBoolean(obj, 'fullPage', action);
+      break;
+
     case 'scroll':
       optionalString(obj, 'scrollTarget', action);
       optionalNumber(obj, 'scrollDistance', action);
@@ -218,7 +236,7 @@ export function parseAction(raw: unknown): TypedAction {
 export async function dispatch(
   action: TypedAction,
   engine: SepiaEngine,
-): Promise<ActionResult | ReadResult | WaitResult | CompactView | TabInfo[]> {
+): Promise<ActionResult | ReadResult | WaitResult | CompactView | TabInfo[] | ScreenshotResult> {
   switch (action.action) {
     case 'click': {
       if (!action.handle) throw new Error('click requires handle');
@@ -263,6 +281,20 @@ export async function dispatch(
     case 'read': {
       if (!action.handle) throw new Error('read requires handle');
       return engine.read(action.handle);
+    }
+
+    case 'screenshot': {
+      const shotOpts: { path?: string; fullPage?: boolean } = {};
+      if (action.path !== undefined) shotOpts.path = action.path;
+      if (action.fullPage !== undefined) shotOpts.fullPage = action.fullPage;
+      return engine.screenshot(shotOpts);
+    }
+
+    case 'screenshot': {
+      const shotOpts: { path?: string; fullPage?: boolean } = {};
+      if (action.path !== undefined) shotOpts.path = action.path;
+      if (action.fullPage !== undefined) shotOpts.fullPage = action.fullPage;
+      return engine.screenshot(shotOpts);
     }
 
     case 'observe': {

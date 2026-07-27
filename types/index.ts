@@ -80,6 +80,15 @@ export interface ActionResult {
   error?: ActionError;
 }
 
+export interface ScreenshotResult {
+  ok: boolean;
+  /** Filesystem path written, when a path was requested. */
+  path?: string;
+  /** Base64-encoded PNG, when no path was requested. */
+  base64?: string;
+  error?: ActionError;
+}
+
 export interface ReadResult {
   ok: boolean;
   text?: string;
