@@ -9,7 +9,7 @@
 
 Phase 3 gate (from CLAUDE.md): **All AC-\* tests pass; spec matches code.**
 
-Current result: **`make ci` exits 0 — 96 tests pass, 2 todo.**
+Current result at the end of Phase 3: 96 tests pass, 2 todo. After the post-Phase-3 hardening pass (§8) the suite stands at **231 pass, 2 todo**.
 
 The 2 todo items (AC-F1, AC-F2) are intentionally deferred — they require `make chromium-build` (BoringSSL-patched Chromium binary, not built in standard CI). Everything else passes.
 
@@ -60,8 +60,8 @@ The 2 todo items (AC-F1, AC-F2) are intentionally deferred — they require `mak
 
 | AC    | Description                                         | Status                                                                                   |
 | ----- | --------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| AC-F1 | JA3 fingerprint matches Chrome 130 on Linux x86_64  | ⏭ **todo** — requires `make chromium-build`                                              |
-| AC-F2 | JA4 fingerprint matches Chrome 130 on Linux x86_64  | ⏭ **todo** — requires `make chromium-build`                                              |
+| AC-F1 | JA3 fingerprint matches Chrome 130 on Linux x86_64  | ⏭ **todo** — blocked: `patches/` contains no `.patch` files for `make chromium-build`    |
+| AC-F2 | JA4 fingerprint matches Chrome 130 on Linux x86_64  | ⏭ **todo** — blocked: same                                                               |
 | AC-F3 | `navigator.webdriver` is absent or `undefined`      | ✅ pass — real browser probe                                                             |
 | AC-F4 | Full cross-signal coherence (UA, jsProbes) all pass | ✅ pass — `chrome-149-linux-x86_64` preset; UA probe dynamic from `preset.chromeVersion` |
 | AC-F5 | Session does not start if coherence check fails     | ✅ pass — `validateAndStart` throws                                                      |
@@ -218,3 +218,80 @@ Added `husky@9.1.7` + `lint-staged@16.1.2`. Pre-commit hook runs ESLint (`--max-
 ---
 
 _End of Phase 3 addendum._
+
+---
+
+## 8. Post-Phase-3 hardening pass
+
+A follow-up pass addressing gaps found by re-auditing the code against its own
+documentation. Every item below is test-first with a numbered AC.
+
+### New acceptance criteria
+
+| AC     | Description                                                              | Where                                        |
+| ------ | ------------------------------------------------------------------------ | -------------------------------------------- |
+| AC-AG5 | A run returns the model's `done` summary as `RunTrace.answer`            | `tests/integration/answer.test.ts`           |
+| AC-AG6 | `gateHandle()` refuses to act below `agent.confidenceThreshold`          | `tests/unit/resolver-gate.test.ts`           |
+| AC-AG7 | Exhausted stale/low-confidence retries end the run as `stale_bail`       | `tests/integration/stale-bail.test.ts`       |
+| AC-AG8 | A rejected model reply is retried WITH corrective feedback               | `tests/integration/retry-feedback.test.ts`   |
+| AC-A5  | `parseAction()` validates required fields and field types                | `tests/contract/action-validation.test.ts`   |
+| AC-A6  | `screenshot` capture across engine, action enum, SDK, MCP                | `tests/integration/screenshot.test.ts`       |
+| AC-R6  | N identically-named same-role elements get N distinct handles            | `tests/integration/list-handles.test.ts`     |
+| AC-R7  | Acting on a handle hits that element, not the first role+name match      | `tests/integration/list-handles.test.ts`     |
+| AC-R8  | Bounded settle on never-idle pages; handle map is pruned                 | `tests/integration/settle-budget.test.ts`    |
+| AC-S7  | Token counts come from `cl100k_base`, not `characters / 4`               | `tests/token-budget/tokenizer.test.ts`       |
+| AC-F6  | The configured preset is applied and validated before a session is used  | `tests/fingerprint/engine-profile.test.ts`   |
+| AC-P5  | Secret field values are stripped from the view before it reaches the LLM | `tests/data-boundary/view-redaction.test.ts` |
+| SR-11  | HTTP: allowlisted config, mandatory auth, body cap, non-racy concurrency | `tests/integration/http-hardening.test.ts`   |
+
+### Defects this pass fixed
+
+1. **Handle collision (AC-R6/AC-R7).** `assignHandle()` reused a handle whenever
+   a fuzzy score exceeded 0.85, so identically-named same-role elements within
+   ~4 ordinal positions collapsed together — 20 "Delete" buttons produced 5
+   handles. Execution then used `.first()`, so _every_ one of those handles
+   clicked row 1. Handles were not even stable across two observations of an
+   unchanged page. Identity is now exact; execution targets the handle's own
+   ordinal among identically-named siblings.
+
+2. **`confidenceThreshold` was never read (AC-AG6).** The documented fail-closed
+   invariant had no implementation. `gateHandle()` now enforces it.
+
+3. **A run could not return anything (AC-AG5).** The `done` action's `summary`
+   was parsed and discarded; `RunTrace` had no answer field.
+
+4. **Retries were byte-identical (AC-AG8).** A model producing unparseable JSON
+   was re-sent exactly the same request.
+
+5. **Fingerprint module was unreachable (AC-F6).** Nothing outside tests called
+   `getPreset()` or `validateAndStart()`; sessions ran with the stock profile and
+   `navigator.webdriver === true`. The default preset also claimed Chrome 130
+   while the bundled browser was 149 — it is now 149.
+
+6. **Page content reached the model unredacted (AC-P5).** `redactSecrets()` only
+   ran on the model's own output, to set a boolean.
+
+7. **HTTP server accepted arbitrary config (SR-11).** `browser.executablePath`
+   (launch any local binary) and `model.endpoint` (exfiltrate page content) were
+   caller-controlled. Auth was optional, the body was unbounded, and the
+   concurrency check was separated from its increment by an `await`.
+
+8. **Observation cost (AC-R8).** `settle()` waited up to 8s for network-idle on
+   every observation; on a page that never goes idle, three observations cost
+   24s. Now ~3s. The CDP session is reused rather than reattached per call, and
+   the handle map is pruned.
+
+### Known remaining gaps
+
+- **AC-F1/AC-F2 cannot pass from this repository.** `patches/README.md`
+  describes a four-patch BoringSSL stack, but no `.patch` files are committed.
+  TLS-level fingerprinting is unaddressed; `make chromium-build` has nothing to
+  apply.
+- **`stableAttrs` are not populated by the default engine path.** The field and
+  its scoring weight exist and callers may supply them, but the CDP
+  accessibility-tree walk does not extract `id` / `data-testid`.
+- **The corpus is 5 synthetic fixtures**, not the 20 pages the docs described.
+  Token gates pass with wide headroom and should not be read as a real-world
+  benchmark.
+- **Prompt-injection sanitization is regex-based.** It is defence in depth, not a
+  guarantee, and its broader patterns can mask legitimate page copy.

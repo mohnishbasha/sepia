@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import type { Verbosity, CompactView, CompactNode, NodeState } from '../types/index.js';
 
 // Re-export the shared types so callers can import from serializer/ or types/
@@ -351,10 +352,42 @@ export function serialize(
   };
 }
 
+// Lazily-resolved cl100k_base encoder. `undefined` = not yet attempted,
+// `null` = unavailable on this platform (fall back to the approximation).
+let encoder: { encode: (text: string) => ArrayLike<number> } | null | undefined;
+
+function getEncoder(): { encode: (text: string) => ArrayLike<number> } | null {
+  if (encoder === undefined) {
+    try {
+      const require = createRequire(import.meta.url);
+      const { get_encoding } = require('tiktoken') as {
+        get_encoding: (name: string) => { encode: (text: string) => ArrayLike<number> };
+      };
+      encoder = get_encoding('cl100k_base');
+    } catch {
+      encoder = null;
+    }
+  }
+  return encoder;
+}
+
 /**
- * Estimate token count using the cl100k_base approximation:
- * tokens ≈ characters / 4.
+ * Count tokens in `text` using the cl100k_base tokenizer.
+ *
+ * Pure and deterministic: local table lookup, no network. Falls back to the
+ * old characters/4 approximation only if the tokenizer cannot be loaded, since
+ * a rough number beats crashing a run over token accounting.
+ *
+ * cl100k_base is exact for OpenAI-compatible models and a close proxy for
+ * others; it is not Claude's tokenizer.
  */
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+  if (text === '') return 0;
+  const enc = getEncoder();
+  if (enc === null) return Math.ceil(text.length / 4);
+  try {
+    return enc.encode(text).length;
+  } catch {
+    return Math.ceil(text.length / 4);
+  }
 }

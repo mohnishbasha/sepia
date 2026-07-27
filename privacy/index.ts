@@ -1,4 +1,5 @@
 import { randomUUID, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import type { CompactView, CompactNode } from '../types/index.js';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -82,6 +83,35 @@ export function redactSecrets(text: string): RedactionResult {
   if (result !== prevSk) count++;
 
   return { redacted: result, count };
+}
+
+// Field names whose value must never leave the process (AC-P5).
+const SECRET_FIELD_NAME =
+  /password|passcode|secret|token|api[\s_-]?key|cvv|cvc|card\s*number|social\s*security|ssn|pin\b/i;
+
+/**
+ * Strip secret values out of a compact view before it enters the LLM context.
+ *
+ * Two passes: values of fields whose accessible name marks them as sensitive,
+ * and credential-shaped strings appearing anywhere in rendered text.
+ * Returns a new view; the input is not mutated.
+ */
+export function redactCompactView(view: CompactView): CompactView {
+  return {
+    ...view,
+    nodes: view.nodes.map((node) => {
+      const next: CompactNode = { ...node };
+
+      if (next.value !== undefined) {
+        next.value = SECRET_FIELD_NAME.test(next.name)
+          ? '[REDACTED]'
+          : redactSecrets(next.value).redacted;
+      }
+      next.name = redactSecrets(next.name).redacted;
+
+      return next;
+    }),
+  };
 }
 
 // Data-boundary auditor — Phase 2 M3/M5

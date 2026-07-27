@@ -20,6 +20,8 @@ A CSS selector breaks the moment someone renames a class. An XPath breaks when a
 
 Sepia handles are semantic. `[e12]` is derived from `{role: "button", name: "Sign in", ordinal: 0}`. When the site ships a redesign that moves the button to a different container, the handle is the same. When the element is gone entirely, Sepia marks it stale and stops.
 
+Identity is exact, not fuzzy. Twenty buttons all labelled "Delete" are twenty elements and get twenty handles; acting on the seventh acts on the seventh. Fuzzy scoring is used only to re-find a known element after the page mutates — never to decide that two elements are the same one.
+
 The invariant is: **act on meaning, not position**. If you can't identify an element by what it is, you shouldn't be interacting with it.
 
 ---
@@ -38,15 +40,19 @@ This extends to every ambiguous case: unknown action type → stop. Model output
 
 Header-level User-Agent spoofing is a known evasion technique. It has been known for years. Anti-bot systems fingerprint TLS ClientHello, HTTP/2 frame ordering, Canvas, WebGL, font metrics, and a dozen other signals — and they cross-correlate them. A Chrome 130 UA with a Firefox TLS fingerprint is detectable in milliseconds.
 
-Sepia patches at the BoringSSL layer, not the HTTP layer. The JA3/JA4 fingerprint matches a real Chrome build because it **is** built from Chrome's TLS stack. The full profile is coherent: TLS, UA, Client Hints, jsProbes all describe the same machine. The validation harness checks this before every session starts. If coherence fails, the session doesn't start.
+The intent is to patch at the BoringSSL layer, not the HTTP layer, so the JA3/JA4 fingerprint matches a real Chrome build because it **is** Chrome's TLS stack.
 
-This is the hard path. It requires patching Chromium source and a multi-hour build. We chose it because the easy path doesn't work.
+That part is not built. This repository ships the coherence harness and the JS/header half of the profile: the preset's UA, locale, timezone, and viewport are applied at context creation, `navigator.webdriver` is masked, and the session refuses to start if the probes disagree. The BoringSSL patch set is described in `patches/README.md` but no patch files exist here, so TLS fingerprinting is not addressed.
+
+Stating it plainly matters more than the aspiration: against an anti-bot system that fingerprints the ClientHello, what ships today does not help.
 
 ---
 
 ## Privacy by design, not by policy
 
-Credentials never touch the model context. The `privacy/` module is a hard gate, not a best-effort filter. The serializer strips secrets before the compact view is built. `redactSecrets()` runs on every typed text before it is recorded in the trace. `sanitizeForLLM()` runs on every page view before it enters the LLM context.
+Credentials never touch the model context. The `privacy/` module is a hard gate, not a best-effort filter. `redactCompactView()` runs on every view before it is formatted for the model — it blanks the value of any field whose accessible name marks it sensitive, and scrubs credential-shaped strings out of rendered text. `sanitizeForLLM()` then masks prompt-injection patterns. `redactSecrets()` runs on typed text before it reaches the trace.
+
+Pattern matching is a filter, not a proof: it catches the shapes it knows. Treat it as defence in depth, not a guarantee that no secret can ever reach the model.
 
 The audit log records _what left the process_, not what was on the page. The trace records _that a secret was redacted_, not what it was. These are not privacy features bolted on after the fact — they are the architecture.
 

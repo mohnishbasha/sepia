@@ -7,12 +7,14 @@ export type Verbosity = 'minimal' | 'standard' | 'full';
 
 export type ErrorCode =
   | 'STALE_HANDLE'
+  | 'LOW_CONFIDENCE'
   | 'ELEMENT_NOT_FOUND'
   | 'ELEMENT_DISABLED'
   | 'NAVIGATION_FAILED'
   | 'TIMEOUT'
   | 'BUDGET_EXCEEDED'
   | 'INVALID_URL'
+  | 'INVALID_ACTION'
   | 'ROBOTS_DISALLOWED'
   | 'PROMPT_INJECTION_DETECTED'
   | 'UNKNOWN';
@@ -32,6 +34,17 @@ export interface NodeState {
   selected?: boolean;
 }
 
+/**
+ * Attributes that identify an element more durably than its position.
+ * Optional: not every source can supply them.
+ */
+export interface StableAttrs {
+  id?: string;
+  name?: string;
+  dataTestId?: string;
+  ariaLabel?: string;
+}
+
 export interface CompactNode {
   handle?: string;
   role: string;
@@ -39,6 +52,7 @@ export interface CompactNode {
   value?: string;
   state?: NodeState;
   indent: number;
+  attrs?: StableAttrs;
   children?: CompactNode[];
 }
 
@@ -63,6 +77,15 @@ export interface ActionResult {
   ok: boolean;
   viewDelta?: CompactView;
   confidence: number;
+  error?: ActionError;
+}
+
+export interface ScreenshotResult {
+  ok: boolean;
+  /** Filesystem path written, when a path was requested. */
+  path?: string;
+  /** Base64-encoded PNG, when no path was requested. */
+  base64?: string;
   error?: ActionError;
 }
 

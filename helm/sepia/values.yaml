@@ -25,6 +25,22 @@ env:
 existingSecret: ""
 existingSecretKey: "SEPIA_API_KEY"
 
+# Authentication for POST /run.
+#
+# The server refuses to start unless one of these is set, because an open agent
+# runner reachable from inside the cluster can be driven to fetch arbitrary URLs
+# with the pod's credentials.
+#
+# Preferred — supply a bearer token:
+#   kubectl create secret generic sepia-server-auth \
+#     --from-literal=SEPIA_SERVER_API_KEY=$(openssl rand -hex 32)
+#   helm upgrade ... --set serverAuth.existingSecret=sepia-server-auth
+serverAuth:
+  existingSecret: ""
+  existingSecretKey: "SEPIA_SERVER_API_KEY"
+  # Set true only if you accept an unauthenticated runner on the cluster network.
+  allowUnauthenticated: false
+
 resources:
   limits:
     # Chromium is memory-hungry: 200-500 MB per session + Node overhead.

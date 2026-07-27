@@ -2,9 +2,11 @@ import OpenAI from 'openai';
 import { createEngine } from '../engine/index.js';
 import type { EngineOptions } from '../engine/index.js';
 import { parseAction, dispatch } from '../actions/index.js';
+import type { TypedAction } from '../actions/index.js';
 import {
   createAuditor,
   redactSecrets,
+  redactCompactView,
   sanitizeForLLM,
   createNamedProfile,
 } from '../privacy/index.js';
@@ -12,6 +14,7 @@ import { createLogger } from '../telemetry/index.js';
 import { estimateTokens } from '../serializer/index.js';
 import type { ActionResult } from '../types/index.js';
 import type { Outcome } from '../types/index.js';
+import { mergeConfig } from '../config/index.js';
 import type { SepiaConfig } from '../config/index.js';
 import type { CompactNode, CompactView } from '../types/index.js';
 
@@ -35,6 +38,8 @@ export interface RunTrace {
   outcome: Outcome;
   totalSteps: number;
   totalTokens: number;
+  /** Final answer from the model's `done` action, when the run reached one. */
+  answer?: string;
   steps: StepTrace[];
 }
 
@@ -134,10 +139,38 @@ function resolveTokens(
   return estimateTokens(inputText) + estimateTokens(outputText);
 }
 
+// Hard ceiling on any inter-attempt sleep. mergeConfig already bounds the
+// configured value, but createAgent also accepts a hand-built SepiaConfig, so
+// the sink clamps too rather than trusting its input
+// (CodeQL js/resource-exhaustion).
+const MAX_RETRY_BACKOFF_MS = 30_000;
+
 // Agent factory
-export function createAgent(config: SepiaConfig): SepiaAgent {
+export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
+  // Normalize whatever we were handed. createAgent is public API — the SDK
+  // passes caller-built objects straight through — so bounding only at the CLI
+  // and HTTP edges left this path unprotected (SR-12).
+  const config = mergeConfig(rawConfig);
+
   return {
     async run(goal: string): Promise<RunTrace> {
+      // Bound the retry sleep once, up front. An unbounded duration reaching
+      // setTimeout parks the run (and, on the HTTP server, a concurrency slot)
+      // for as long as the caller likes.
+      //
+      // Written as a relational comparison rather than Math.min/max on purpose:
+      // the value must be *consumed on the branch where the comparison proves it
+      // small*. A `Math.min` clamp reads the same to a human but propagates the
+      // original value's provenance, so it does not establish the bound for
+      // static analysis (CodeQL js/resource-exhaustion).
+      const configuredBackoff = config.agent.retryBackoffMs;
+      const backoffMs =
+        !Number.isFinite(configuredBackoff) || configuredBackoff < 0
+          ? 0
+          : configuredBackoff > MAX_RETRY_BACKOFF_MS
+            ? MAX_RETRY_BACKOFF_MS
+            : configuredBackoff;
+
       const runId = generateId();
       const sessionId = generateId();
       const startMs = Date.now();
@@ -152,6 +185,11 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
 
       const engineOpts: EngineOptions = {
         headless: config.browser.headless,
+        confidenceThreshold: config.agent.confidenceThreshold,
+        profile: config.browser.profile,
+        ...(config.browser.settleTimeoutMs !== undefined
+          ? { settleTimeoutMs: config.browser.settleTimeoutMs }
+          : {}),
       };
       if (config.browser.executablePath !== undefined) {
         engineOpts.executablePath = config.browser.executablePath;
@@ -178,6 +216,7 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
       const systemPrompt = selectSystemPrompt(config.model.promptStyle ?? 'default');
       let outcome: Outcome = 'error';
       let totalTokens = 0;
+      let answer: string | undefined;
 
       // Conversation history (excludes system prompt; windowed before each call).
       const history: OpenAI.Chat.ChatCompletionMessageParam[] = [];
@@ -208,8 +247,9 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             break;
           }
 
-          // Format and sanitize page content before inserting into LLM context (SR-2)
-          const rawPageContent = formatCompactView(view);
+          // Strip secret values, then sanitize, before any page content enters
+          // the LLM context (AC-P5, SR-2).
+          const rawPageContent = formatCompactView(redactCompactView(view));
           const { sanitized: safePageContent, injectionDetected } = sanitizeForLLM(rawPageContent);
           const userContent = `Goal: ${goal}\n\nCurrent page:\n${safePageContent}`;
 
@@ -240,28 +280,44 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             userMsg,
           ];
 
-          // Build model call params
-          const callParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
-            model: config.model.model,
-            messages: contextMessages,
-            max_tokens: 1024,
-          };
-          if (config.model.jsonMode === true) {
-            callParams.response_format = { type: 'json_object' };
-          }
-
-          // Call model with JSON parse retry
+          // Call the model, retrying with corrective feedback when the reply is
+          // unparseable or fails validation (AC-AG8). Re-sending a byte-identical
+          // request gives the model no reason to answer any differently, so each
+          // retry states what was wrong with the previous attempt.
           let rawContent = '';
-          let parsedRaw: unknown;
           let apiTokensUsed: number | null = null;
-          let modelCallSuccess = false;
+          let typedAction: TypedAction | undefined;
+          let doneSummary: string | undefined;
+          let sawDone = false;
+          let rejection: string | undefined;
+          let modelCallFailed = false;
 
-          for (let parseAttempt = 0; parseAttempt <= config.agent.maxRetries; parseAttempt++) {
+          for (let attempt = 0; attempt <= config.agent.maxRetries; attempt++) {
+            const attemptMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [...contextMessages];
+            if (rejection !== undefined) {
+              attemptMessages.push({ role: 'assistant', content: rawContent });
+              attemptMessages.push({
+                role: 'user',
+                content:
+                  `Your previous reply was rejected: ${rejection}. ` +
+                  `Reply with exactly one valid JSON action object and nothing else.`,
+              });
+            }
+
+            const callParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
+              model: config.model.model,
+              messages: attemptMessages,
+              max_tokens: 1024,
+            };
+            if (config.model.jsonMode === true) {
+              callParams.response_format = { type: 'json_object' };
+            }
+
             let completion: OpenAI.Chat.ChatCompletion;
             try {
               completion = await client.chat.completions.create(callParams);
             } catch (err) {
-              outcome = 'error';
+              modelCallFailed = true;
               steps.push({
                 stepN,
                 action: 'model_call',
@@ -281,27 +337,50 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             apiTokensUsed = completion.usage?.total_tokens ?? null;
             rawContent = completion.choices[0]?.message?.content ?? '';
 
-            // Try to parse; repair and retry on failure
+            let parsedRaw: unknown;
             try {
               parsedRaw = JSON.parse(rawContent);
-              modelCallSuccess = true;
-              break;
             } catch {
               const repaired = repairJson(rawContent);
               try {
                 parsedRaw = JSON.parse(repaired);
                 rawContent = repaired;
-                modelCallSuccess = true;
-                break;
               } catch {
-                if (parseAttempt < config.agent.maxRetries) {
-                  await new Promise<void>((r) => setTimeout(r, config.agent.retryBackoffMs));
+                rejection = 'the response was not valid JSON';
+                if (attempt < config.agent.maxRetries) {
+                  await new Promise<void>((r) => setTimeout(r, backoffMs));
                 }
+                continue;
+              }
+            }
+
+            // done action — its summary is the run's answer (AC-AG5)
+            if (
+              typeof parsedRaw === 'object' &&
+              parsedRaw !== null &&
+              (parsedRaw as Record<string, unknown>)['action'] === 'done'
+            ) {
+              const summary = (parsedRaw as Record<string, unknown>)['summary'];
+              if (typeof summary === 'string' && summary.trim() !== '') {
+                doneSummary = summary;
+              }
+              sawDone = true;
+              break;
+            }
+
+            try {
+              typedAction = parseAction(parsedRaw);
+              rejection = undefined;
+              break;
+            } catch (err) {
+              rejection = err instanceof Error ? err.message : String(err);
+              if (attempt < config.agent.maxRetries) {
+                await new Promise<void>((r) => setTimeout(r, backoffMs));
               }
             }
           }
 
-          if (!modelCallSuccess) {
+          if (modelCallFailed) {
             outcome = 'error';
             break;
           }
@@ -315,22 +394,31 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
           );
           totalTokens += tokensUsed;
 
-          // Check for done action
-          if (
-            typeof parsedRaw === 'object' &&
-            parsedRaw !== null &&
-            (parsedRaw as Record<string, unknown>)['action'] === 'done'
-          ) {
+          if (sawDone) {
+            if (doneSummary !== undefined) answer = doneSummary;
             outcome = 'success';
             break;
           }
 
-          // Parse as typed action
-          let typedAction: ReturnType<typeof parseAction>;
-          try {
-            typedAction = parseAction(parsedRaw);
-          } catch {
+          // Retries exhausted without a valid action — record why, then stop.
+          if (typedAction === undefined) {
             outcome = 'error';
+            steps.push({
+              stepN,
+              action: 'model_call',
+              confidence: 0,
+              tokensUsed,
+              latencyMs: Date.now() - stepStart,
+              result: {
+                ok: false,
+                confidence: 0,
+                error: {
+                  code: 'INVALID_ACTION',
+                  message: rejection ?? 'model produced no valid action',
+                },
+              },
+              secretsRedacted: false,
+            });
             break;
           }
 
@@ -339,6 +427,14 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
           let confidence = 1;
           let secretsRedacted = false;
           let retries = 0;
+
+          // A handle the engine refused to act on — stale, or resolved below the
+          // confidence threshold. Re-observing may settle the page, so retry a
+          // bounded number of times, then bail rather than guessing (AC-AG7).
+          const isUnresolvable = (r: unknown): boolean => {
+            const code = (r as ActionResult).error?.code;
+            return code === 'STALE_HANDLE' || code === 'LOW_CONFIDENCE';
+          };
 
           while (true) {
             try {
@@ -351,19 +447,20 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
               };
             }
 
-            const actionResult = result as ActionResult;
-            if (actionResult.error?.code === 'STALE_HANDLE' && retries < config.agent.maxRetries) {
+            if (isUnresolvable(result) && retries < config.agent.maxRetries) {
               retries++;
               try {
                 view = await engine.observe({ verbosity: config.agent.verbosity });
               } catch {
                 break;
               }
-              await new Promise<void>((r) => setTimeout(r, config.agent.retryBackoffMs));
+              await new Promise<void>((r) => setTimeout(r, backoffMs));
               continue;
             }
             break;
           }
+
+          const bailedOnHandle = isUnresolvable(result);
 
           if ('confidence' in result) {
             confidence = (result as ActionResult).confidence;
@@ -406,6 +503,13 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
           if (errCode !== undefined) stepEvent.errorCode = errCode;
           logger.step(stepEvent);
 
+          // Retries exhausted against an unresolvable handle: stop and report
+          // rather than continuing to act on an ambiguous page (AC-AG7).
+          if (bailedOnHandle) {
+            outcome = 'stale_bail';
+            break;
+          }
+
           // Append to windowed history
           history.push(userMsg);
           history.push({ role: 'assistant', content: rawContent });
@@ -439,6 +543,7 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
         outcome,
         totalSteps: steps.length,
         totalTokens,
+        ...(answer !== undefined ? { answer } : {}),
         steps,
       };
     },

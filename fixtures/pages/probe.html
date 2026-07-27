@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fingerprint probes</title>
+  </head>
+  <body>
+    <h1>Probes</h1>
+
+    <!--
+      Reflects the browser's own automation signals into the accessibility tree
+      so they can be asserted through the engine's public API (AC-F6).
+    -->
+    <section aria-label="Probe results">
+      <h2 id="wd"></h2>
+      <h2 id="vendor"></h2>
+      <h2 id="chrome"></h2>
+      <h2 id="ua"></h2>
+    </section>
+
+    <script>
+      document.getElementById('wd').textContent = 'webdriver=' + String(navigator.webdriver);
+      document.getElementById('vendor').textContent = 'vendor=' + navigator.vendor;
+      document.getElementById('chrome').textContent =
+        'chrome=' + String(typeof window.chrome !== 'undefined');
+      document.getElementById('ua').textContent = 'ua=' + navigator.userAgent;
+    </script>
+  </body>
+</html>

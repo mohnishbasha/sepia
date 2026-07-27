@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Busy page</title>
+  </head>
+  <body>
+    <h1>Busy</h1>
+    <button type="button" id="go">Continue</button>
+
+    <!--
+      Polls an endpoint that never responds, so the page never reaches
+      network-idle. Sites with long-polling, SSE, websockets, or analytics
+      beacons behave this way; waiting for idle on them burns the full timeout
+      on every observation.
+    -->
+    <script>
+      setInterval(function () {
+        fetch('/slow').catch(function () {});
+      }, 150);
+    </script>
+  </body>
+</html>

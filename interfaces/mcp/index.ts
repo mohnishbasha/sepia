@@ -134,6 +134,18 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'screenshot',
+    description:
+      'Capture a PNG screenshot. Writes to `path` if given, otherwise returns base64 data.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        path: { type: 'string', description: 'File path to write the PNG to' },
+        fullPage: { type: 'boolean', description: 'Capture the full scrollable page' },
+      },
+    },
+  },
+  {
     name: 'back',
     description: 'Navigate back in browser history',
     inputSchema: { type: 'object' as const, properties: {} },
@@ -152,6 +164,11 @@ export async function startMcpServer(opts: McpServerOptions): Promise<void> {
   // Create a shared engine instance for the session
   const engineOpts: EngineOptions = {
     headless: opts.config.browser.headless,
+    confidenceThreshold: opts.config.agent.confidenceThreshold,
+    profile: opts.config.browser.profile,
+    ...(opts.config.browser.settleTimeoutMs !== undefined
+      ? { settleTimeoutMs: opts.config.browser.settleTimeoutMs }
+      : {}),
   };
   if (opts.config.browser.executablePath !== undefined) {
     engineOpts.executablePath = opts.config.browser.executablePath;
@@ -221,6 +238,13 @@ export async function startMcpServer(opts: McpServerOptions): Promise<void> {
         }
         case 'read': {
           result = await engine.read(String(params['handle'] ?? ''));
+          break;
+        }
+        case 'screenshot': {
+          const shotOpts: { path?: string; fullPage?: boolean } = {};
+          if (typeof params['path'] === 'string') shotOpts.path = params['path'];
+          if (typeof params['fullPage'] === 'boolean') shotOpts.fullPage = params['fullPage'];
+          result = await engine.screenshot(shotOpts);
           break;
         }
         case 'back': {

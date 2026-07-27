@@ -10,6 +10,7 @@ import type {
   TabInfo,
   WaitConditionType,
   Verbosity,
+  ScreenshotResult,
 } from '../../types/index.js';
 import type { RunTrace } from '../../agent/index.js';
 
@@ -25,6 +26,7 @@ export type {
   RunTrace,
   WaitConditionType,
   Verbosity,
+  ScreenshotResult,
 };
 
 export interface SepiaSession {
@@ -37,6 +39,7 @@ export interface SepiaSession {
   scroll: (target: 'up' | 'down' | string, distance?: number) => Promise<ActionResult>;
   press: (key: string) => Promise<ActionResult>;
   read: (handle: string) => Promise<ReadResult>;
+  screenshot: (opts?: { path?: string; fullPage?: boolean }) => Promise<ScreenshotResult>;
   wait: (condition: WaitConditionType, timeoutMs?: number) => Promise<WaitResult>;
   open: (url: string) => Promise<ActionResult>;
   back: () => Promise<ActionResult>;
@@ -58,6 +61,11 @@ export interface SepiaAgent {
 export async function createSession(config: SepiaConfig): Promise<SepiaSession> {
   const engineOpts: EngineOptions = {
     headless: config.browser.headless,
+    confidenceThreshold: config.agent.confidenceThreshold,
+    profile: config.browser.profile,
+    ...(config.browser.settleTimeoutMs !== undefined
+      ? { settleTimeoutMs: config.browser.settleTimeoutMs }
+      : {}),
   };
   if (config.browser.executablePath !== undefined) {
     engineOpts.executablePath = config.browser.executablePath;
@@ -74,6 +82,7 @@ export async function createSession(config: SepiaConfig): Promise<SepiaSession> 
     scroll: (target, distance) => engine.scroll(target, distance),
     press: (key) => engine.press(key),
     read: (handle) => engine.read(handle),
+    screenshot: (shotOpts) => engine.screenshot(shotOpts),
     wait: (condition, timeoutMs) => engine.wait(condition, timeoutMs),
     open: (url) => engine.open(url),
     back: () => engine.back(),
