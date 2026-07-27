@@ -152,6 +152,7 @@ export async function startMcpServer(opts: McpServerOptions): Promise<void> {
   // Create a shared engine instance for the session
   const engineOpts: EngineOptions = {
     headless: opts.config.browser.headless,
+    confidenceThreshold: opts.config.agent.confidenceThreshold,
   };
   if (opts.config.browser.executablePath !== undefined) {
     engineOpts.executablePath = opts.config.browser.executablePath;

@@ -58,6 +58,7 @@ export interface SepiaAgent {
 export async function createSession(config: SepiaConfig): Promise<SepiaSession> {
   const engineOpts: EngineOptions = {
     headless: config.browser.headless,
+    confidenceThreshold: config.agent.confidenceThreshold,
   };
   if (config.browser.executablePath !== undefined) {
     engineOpts.executablePath = config.browser.executablePath;

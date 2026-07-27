@@ -8,8 +8,9 @@ import { startServer } from '../interfaces/http/index.js';
 function printUsage(): void {
   process.stderr.write(
     'Usage:\n' +
-      '  sepia run "<goal>" [--model X] [--endpoint Y] [--verbose]\n' +
-      '  sepia serve [--port 3000] [--max-concurrent 5]\n',
+      '  sepia run "<goal>" [--model X] [--endpoint Y] [--verbose] [--answer-only]\n' +
+      '  sepia serve [--port 3000] [--max-concurrent 5]\n' +
+      '  sepia mcp\n',
   );
 }
 
@@ -18,12 +19,15 @@ async function runCommand(args: string[]): Promise<void> {
   let model: string | undefined;
   let endpoint: string | undefined;
   let verbose = false;
+  let answerOnly = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === undefined) continue;
     if (arg === '--verbose' || arg === '-v') {
       verbose = true;
+    } else if (arg === '--answer-only') {
+      answerOnly = true;
     } else if (arg === '--model' && i + 1 < args.length) {
       model = args[++i];
     } else if (arg === '--endpoint' && i + 1 < args.length) {
@@ -64,7 +68,11 @@ async function runCommand(args: string[]): Promise<void> {
 
   try {
     const trace = await agent.run(goal);
-    process.stdout.write(JSON.stringify(trace, null, 2) + '\n');
+    if (answerOnly) {
+      process.stdout.write((trace.answer ?? '') + '\n');
+    } else {
+      process.stdout.write(JSON.stringify(trace, null, 2) + '\n');
+    }
     process.exit(trace.outcome === 'success' ? 0 : 1);
   } catch (err) {
     process.stderr.write(`[sepia] fatal: ${String(err)}\n`);
@@ -109,6 +117,21 @@ function serveCommand(args: string[]): void {
   startServer({ port, maxConcurrent, config, ...(serverApiKey ? { serverApiKey } : {}) });
 }
 
+async function mcpCommand(): Promise<void> {
+  const { startMcpServer } = await import('../interfaces/mcp/index.js');
+  const config = mergeConfig({
+    model: {
+      endpoint: process.env['SEPIA_MODEL_ENDPOINT'] ?? 'https://api.anthropic.com/v1',
+      model: process.env['SEPIA_MODEL'] ?? 'claude-sonnet-4-6',
+      maxTokensPerStep: 100_000,
+      ...(process.env['SEPIA_API_KEY'] !== undefined
+        ? { apiKey: process.env['SEPIA_API_KEY'] }
+        : {}),
+    },
+  });
+  await startMcpServer({ config });
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const subcommand = args[0];
@@ -118,6 +141,8 @@ async function main(): Promise<void> {
     await runCommand(rest);
   } else if (subcommand === 'serve') {
     serveCommand(rest);
+  } else if (subcommand === 'mcp') {
+    await mcpCommand();
   } else {
     printUsage();
     process.exit(1);

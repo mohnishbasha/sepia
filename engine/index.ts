@@ -2,7 +2,8 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { serialize } from '../serializer/index.js';
 import type { AXSnapshot } from '../serializer/index.js';
-import { createHandleMap, resolveHandle, processCompactView } from '../resolver/index.js';
+import { createHandleMap, gateHandle, processCompactView } from '../resolver/index.js';
+import type { SemanticFingerprint } from '../resolver/index.js';
 import type {
   CompactView,
   ActionResult,
@@ -24,6 +25,11 @@ export interface EngineOptions {
   userAgent?: string;
   viewport?: { width: number; height: number };
   humanTiming?: boolean;
+  /**
+   * Minimum resolver confidence required before an action is performed.
+   * Below this the engine refuses rather than acting on a guess (AC-AG6).
+   */
+  confidenceThreshold?: number;
   security?: {
     rateLimitMs?: number;
     robotsAwareness?: boolean;
@@ -140,6 +146,17 @@ async function getAXSnapshot(page: Page): Promise<AXSnapshot | null> {
   }
 }
 
+/**
+ * Quote a string for safe use as a CSS attribute-selector value.
+ *
+ * Accessible names come from page content, which is attacker-controlled; an
+ * unescaped quote would otherwise terminate the selector and let page text
+ * alter which element is matched.
+ */
+export function cssQuote(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
 // Engine factory — Phase 2 M3
 export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
   const headless = opts?.headless ?? true;
@@ -203,6 +220,59 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     const snap = await getAXSnapshot(page);
     const view = serialize(snap, null, { url: page.url(), title: await page.title() });
     return { view: processCompactView(view, handleMap), snap };
+  }
+
+  const confidenceThreshold = opts?.confidenceThreshold ?? 0;
+
+  type Gated =
+    | { ok: true; fp: SemanticFingerprint; confidence: number }
+    | {
+        ok: false;
+        confidence: number;
+        error: { code: 'STALE_HANDLE' | 'LOW_CONFIDENCE'; message: string; handle: string };
+      };
+
+  /**
+   * Observe, then decide whether the handle may be acted on at all.
+   * Fails closed: a stale handle or one below the confidence threshold never
+   * reaches the page (AC-AG6).
+   */
+  async function gate(handle: string): Promise<Gated> {
+    const { view } = await getView();
+    const decision = gateHandle(handle, view.nodes, handleMap, confidenceThreshold);
+
+    if (!decision.allowed) {
+      return decision.reason === 'stale'
+        ? {
+            ok: false,
+            confidence: decision.confidence,
+            error: {
+              code: 'STALE_HANDLE',
+              message: `Handle ${handle} is stale or not found`,
+              handle,
+            },
+          }
+        : {
+            ok: false,
+            confidence: decision.confidence,
+            error: {
+              code: 'LOW_CONFIDENCE',
+              message:
+                `Handle ${handle} resolved at confidence ${decision.confidence.toFixed(2)}, ` +
+                `below threshold ${String(confidenceThreshold)} — refusing to act`,
+              handle,
+            },
+          };
+    }
+
+    return { ok: true, fp: decision.record.fingerprint, confidence: decision.confidence };
+  }
+
+  /** Resolve a fingerprint to the Playwright locator the action will run against. */
+  function locate(fp: SemanticFingerprint) {
+    return page
+      .getByRole(fp.role as Parameters<Page['getByRole']>[0], { name: fp.accessibleName })
+      .first();
   }
 
   return {
@@ -279,37 +349,21 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     },
 
     async click(handle: string): Promise<ActionResult> {
-      const { view } = await getView();
-      const resolveResult = resolveHandle(handle, view.nodes, handleMap);
-      if (resolveResult.stale) {
-        return {
-          ok: false,
-          confidence: resolveResult.confidence,
-          error: {
-            code: 'STALE_HANDLE',
-            message: `Handle ${handle} is stale or not found`,
-            handle,
-          },
-        };
-      }
-
-      const record = resolveResult.record;
-      const fp = record.fingerprint;
+      const g = await gate(handle);
+      if (!g.ok) return { ok: false, confidence: g.confidence, error: g.error };
+      const fp = g.fp;
 
       try {
-        const locator = page.getByRole(fp.role as Parameters<Page['getByRole']>[0], {
-          name: fp.accessibleName,
-        });
-        await locator.first().click({ timeout: 10000 });
+        await locate(fp).click({ timeout: 10000 });
         await settle();
-        return { ok: true, confidence: resolveResult.confidence };
+        return { ok: true, confidence: g.confidence };
       } catch (err) {
         try {
           await page
-            .locator(`[aria-label="${fp.accessibleName}"]`)
-            .first()
+            .locator(`[aria-label=${cssQuote(fp.accessibleName)}]`)
+            .nth(fp.ordinalAmongSameRole)
             .click({ timeout: 5000 });
-          return { ok: true, confidence: resolveResult.confidence * 0.8 };
+          return { ok: true, confidence: g.confidence * 0.8 };
         } catch {
           return {
             ok: false,
@@ -329,34 +383,18 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
       text: string,
       typeOpts?: { submit?: boolean },
     ): Promise<ActionResult> {
-      const { view } = await getView();
-      const resolveResult = resolveHandle(handle, view.nodes, handleMap);
-      if (resolveResult.stale) {
-        return {
-          ok: false,
-          confidence: resolveResult.confidence,
-          error: {
-            code: 'STALE_HANDLE',
-            message: `Handle ${handle} is stale or not found`,
-            handle,
-          },
-        };
-      }
-
-      const fp = resolveResult.record.fingerprint;
+      const g = await gate(handle);
+      if (!g.ok) return { ok: false, confidence: g.confidence, error: g.error };
+      const fp = g.fp;
 
       try {
-        const locator = page.getByRole(fp.role as Parameters<Page['getByRole']>[0], {
-          name: fp.accessibleName,
-        });
-        const el = locator.first();
-        await el.clear({ timeout: 5000 });
+        const el = locate(fp);
         await el.fill(text, { timeout: 5000 });
         if (typeOpts?.submit === true) {
           await el.press('Enter');
           await settle();
         }
-        return { ok: true, confidence: resolveResult.confidence };
+        return { ok: true, confidence: g.confidence };
       } catch (err) {
         return {
           ok: false,
@@ -371,24 +409,13 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     },
 
     async select(handle: string, option: string): Promise<ActionResult> {
-      const { view } = await getView();
-      const resolveResult = resolveHandle(handle, view.nodes, handleMap);
-      if (resolveResult.stale) {
-        return {
-          ok: false,
-          confidence: resolveResult.confidence,
-          error: { code: 'STALE_HANDLE', message: `Handle ${handle} is stale`, handle },
-        };
-      }
-
-      const fp = resolveResult.record.fingerprint;
+      const g = await gate(handle);
+      if (!g.ok) return { ok: false, confidence: g.confidence, error: g.error };
+      const fp = g.fp;
 
       try {
-        const locator = page.getByRole(fp.role as Parameters<Page['getByRole']>[0], {
-          name: fp.accessibleName,
-        });
-        await locator.first().selectOption(option, { timeout: 5000 });
-        return { ok: true, confidence: resolveResult.confidence };
+        await locate(fp).selectOption(option, { timeout: 5000 });
+        return { ok: true, confidence: g.confidence };
       } catch (err) {
         return {
           ok: false,
@@ -403,28 +430,18 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     },
 
     async check(handle: string, checked: boolean): Promise<ActionResult> {
-      const { view } = await getView();
-      const resolveResult = resolveHandle(handle, view.nodes, handleMap);
-      if (resolveResult.stale) {
-        return {
-          ok: false,
-          confidence: resolveResult.confidence,
-          error: { code: 'STALE_HANDLE', message: `Handle ${handle} is stale`, handle },
-        };
-      }
-
-      const fp = resolveResult.record.fingerprint;
+      const g = await gate(handle);
+      if (!g.ok) return { ok: false, confidence: g.confidence, error: g.error };
+      const fp = g.fp;
 
       try {
-        const locator = page.getByRole(fp.role as Parameters<Page['getByRole']>[0], {
-          name: fp.accessibleName,
-        });
+        const el = locate(fp);
         if (checked) {
-          await locator.first().check({ timeout: 5000 });
+          await el.check({ timeout: 5000 });
         } else {
-          await locator.first().uncheck({ timeout: 5000 });
+          await el.uncheck({ timeout: 5000 });
         }
-        return { ok: true, confidence: resolveResult.confidence };
+        return { ok: true, confidence: g.confidence };
       } catch (err) {
         return {
           ok: false,
@@ -439,24 +456,13 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     },
 
     async hover(handle: string): Promise<ActionResult> {
-      const { view } = await getView();
-      const resolveResult = resolveHandle(handle, view.nodes, handleMap);
-      if (resolveResult.stale) {
-        return {
-          ok: false,
-          confidence: resolveResult.confidence,
-          error: { code: 'STALE_HANDLE', message: `Handle ${handle} is stale`, handle },
-        };
-      }
-
-      const fp = resolveResult.record.fingerprint;
+      const g = await gate(handle);
+      if (!g.ok) return { ok: false, confidence: g.confidence, error: g.error };
+      const fp = g.fp;
 
       try {
-        const locator = page.getByRole(fp.role as Parameters<Page['getByRole']>[0], {
-          name: fp.accessibleName,
-        });
-        await locator.first().hover({ timeout: 5000 });
-        return { ok: true, confidence: resolveResult.confidence };
+        await locate(fp).hover({ timeout: 5000 });
+        return { ok: true, confidence: g.confidence };
       } catch (err) {
         return {
           ok: false,
@@ -482,24 +488,9 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
             (globalThis as unknown as { scrollBy: (x: number, y: number) => void }).scrollBy(0, d);
           }, delta);
         } else {
-          const { view } = await getView();
-          const resolveResult = resolveHandle(target, view.nodes, handleMap);
-          if (resolveResult.stale) {
-            return {
-              ok: false,
-              confidence: resolveResult.confidence,
-              error: {
-                code: 'STALE_HANDLE',
-                message: `Handle ${target} is stale`,
-                handle: target,
-              },
-            };
-          }
-          const fp = resolveResult.record.fingerprint;
-          const locator = page.getByRole(fp.role as Parameters<Page['getByRole']>[0], {
-            name: fp.accessibleName,
-          });
-          await locator.first().scrollIntoViewIfNeeded({ timeout: 5000 });
+          const g = await gate(target);
+          if (!g.ok) return { ok: false, confidence: g.confidence, error: g.error };
+          await locate(g.fp).scrollIntoViewIfNeeded({ timeout: 5000 });
         }
         return { ok: true, confidence: 1 };
       } catch (err) {
@@ -525,26 +516,11 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     },
 
     async read(handle: string): Promise<ReadResult> {
-      const { view } = await getView();
-      const resolveResult = resolveHandle(handle, view.nodes, handleMap);
-      if (resolveResult.stale) {
-        return {
-          ok: false,
-          error: {
-            code: 'STALE_HANDLE',
-            message: `Handle ${handle} is stale`,
-            handle,
-          },
-        };
-      }
-
-      const fp = resolveResult.record.fingerprint;
+      const g = await gate(handle);
+      if (!g.ok) return { ok: false, error: g.error };
 
       try {
-        const locator = page.getByRole(fp.role as Parameters<Page['getByRole']>[0], {
-          name: fp.accessibleName,
-        });
-        const text = await locator.first().innerText({ timeout: 5000 });
+        const text = await locate(g.fp).innerText({ timeout: 5000 });
         return { ok: true, text };
       } catch (err) {
         return {
@@ -570,11 +546,8 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
         } else if (condition.type === 'element') {
           const deadline = Date.now() + timeout;
           while (Date.now() < deadline) {
-            const { view } = await getView();
-            const resolveResult = resolveHandle(condition.handle, view.nodes, handleMap);
-            if (!resolveResult.stale) {
-              return { ok: true, timedOut: false };
-            }
+            const g = await gate(condition.handle);
+            if (g.ok) return { ok: true, timedOut: false };
             await new Promise<void>((r) => setTimeout(r, 500));
           }
           return { ok: false, timedOut: true };

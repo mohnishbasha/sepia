@@ -35,6 +35,8 @@ export interface RunTrace {
   outcome: Outcome;
   totalSteps: number;
   totalTokens: number;
+  /** Final answer from the model's `done` action, when the run reached one. */
+  answer?: string;
   steps: StepTrace[];
 }
 
@@ -152,6 +154,7 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
 
       const engineOpts: EngineOptions = {
         headless: config.browser.headless,
+        confidenceThreshold: config.agent.confidenceThreshold,
       };
       if (config.browser.executablePath !== undefined) {
         engineOpts.executablePath = config.browser.executablePath;
@@ -178,6 +181,7 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
       const systemPrompt = selectSystemPrompt(config.model.promptStyle ?? 'default');
       let outcome: Outcome = 'error';
       let totalTokens = 0;
+      let answer: string | undefined;
 
       // Conversation history (excludes system prompt; windowed before each call).
       const history: OpenAI.Chat.ChatCompletionMessageParam[] = [];
@@ -315,12 +319,16 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
           );
           totalTokens += tokensUsed;
 
-          // Check for done action
+          // Check for done action — its summary is the run's answer (AC-AG5)
           if (
             typeof parsedRaw === 'object' &&
             parsedRaw !== null &&
             (parsedRaw as Record<string, unknown>)['action'] === 'done'
           ) {
+            const summary = (parsedRaw as Record<string, unknown>)['summary'];
+            if (typeof summary === 'string' && summary.trim() !== '') {
+              answer = summary;
+            }
             outcome = 'success';
             break;
           }
@@ -340,6 +348,14 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
           let secretsRedacted = false;
           let retries = 0;
 
+          // A handle the engine refused to act on — stale, or resolved below the
+          // confidence threshold. Re-observing may settle the page, so retry a
+          // bounded number of times, then bail rather than guessing (AC-AG7).
+          const isUnresolvable = (r: unknown): boolean => {
+            const code = (r as ActionResult).error?.code;
+            return code === 'STALE_HANDLE' || code === 'LOW_CONFIDENCE';
+          };
+
           while (true) {
             try {
               result = await dispatch(typedAction, engine);
@@ -351,8 +367,7 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
               };
             }
 
-            const actionResult = result as ActionResult;
-            if (actionResult.error?.code === 'STALE_HANDLE' && retries < config.agent.maxRetries) {
+            if (isUnresolvable(result) && retries < config.agent.maxRetries) {
               retries++;
               try {
                 view = await engine.observe({ verbosity: config.agent.verbosity });
@@ -364,6 +379,8 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             }
             break;
           }
+
+          const bailedOnHandle = isUnresolvable(result);
 
           if ('confidence' in result) {
             confidence = (result as ActionResult).confidence;
@@ -406,6 +423,13 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
           if (errCode !== undefined) stepEvent.errorCode = errCode;
           logger.step(stepEvent);
 
+          // Retries exhausted against an unresolvable handle: stop and report
+          // rather than continuing to act on an ambiguous page (AC-AG7).
+          if (bailedOnHandle) {
+            outcome = 'stale_bail';
+            break;
+          }
+
           // Append to windowed history
           history.push(userMsg);
           history.push({ role: 'assistant', content: rawContent });
@@ -439,6 +463,7 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
         outcome,
         totalSteps: steps.length,
         totalTokens,
+        ...(answer !== undefined ? { answer } : {}),
         steps,
       };
     },

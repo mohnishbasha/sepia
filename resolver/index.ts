@@ -268,6 +268,38 @@ export function resolveHandle(
 }
 
 /**
+ * Decision returned by gateHandle: whether an action may proceed against a
+ * handle, and if not, why.
+ */
+export type HandleGate =
+  | { allowed: true; confidence: number; record: HandleRecord }
+  | { allowed: false; reason: 'stale' | 'low_confidence'; confidence: number };
+
+/**
+ * Fail-closed gate for acting on a handle (AC-AG6).
+ *
+ * A handle may only be acted on when it still resolves AND does so at or above
+ * the caller's confidence threshold. Below the threshold we refuse rather than
+ * act on a guess — a wrong click is not a recoverable error.
+ */
+export function gateHandle(
+  handle: string,
+  currentNodes: CompactNode[],
+  map: HandleMap,
+  threshold: number,
+): HandleGate {
+  const result = resolveHandle(handle, currentNodes, map);
+
+  if (result.stale) {
+    return { allowed: false, reason: 'stale', confidence: result.confidence };
+  }
+  if (result.confidence < threshold) {
+    return { allowed: false, reason: 'low_confidence', confidence: result.confidence };
+  }
+  return { allowed: true, confidence: result.confidence, record: result.record };
+}
+
+/**
  * Walk a flat list of CompactNodes, assign/re-resolve handles for all
  * interactive nodes (those with a handle field set), and return updated nodes.
  */

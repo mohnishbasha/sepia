@@ -7,6 +7,7 @@ export type Verbosity = 'minimal' | 'standard' | 'full';
 
 export type ErrorCode =
   | 'STALE_HANDLE'
+  | 'LOW_CONFIDENCE'
   | 'ELEMENT_NOT_FOUND'
   | 'ELEMENT_DISABLED'
   | 'NAVIGATION_FAILED'
