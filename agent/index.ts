@@ -14,6 +14,7 @@ import { createLogger } from '../telemetry/index.js';
 import { estimateTokens } from '../serializer/index.js';
 import type { ActionResult } from '../types/index.js';
 import type { Outcome } from '../types/index.js';
+import { mergeConfig } from '../config/index.js';
 import type { SepiaConfig } from '../config/index.js';
 import type { CompactNode, CompactView } from '../types/index.js';
 
@@ -145,7 +146,12 @@ function resolveTokens(
 const MAX_RETRY_BACKOFF_MS = 30_000;
 
 // Agent factory
-export function createAgent(config: SepiaConfig): SepiaAgent {
+export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
+  // Normalize whatever we were handed. createAgent is public API — the SDK
+  // passes caller-built objects straight through — so bounding only at the CLI
+  // and HTTP edges left this path unprotected (SR-12).
+  const config = mergeConfig(rawConfig);
+
   return {
     async run(goal: string): Promise<RunTrace> {
       // Bound the retry sleep once, up front. An unbounded duration reaching
