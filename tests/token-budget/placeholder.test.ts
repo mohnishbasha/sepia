@@ -205,9 +205,11 @@ describe('token-budget', () => {
   // Extra: estimateTokens formula
   // -------------------------------------------------------------------------
 
-  it('estimateTokens uses Math.ceil(text.length / 4)', () => {
-    expect(estimateTokens('hello')).toBe(Math.ceil(5 / 4));
-    expect(estimateTokens('hello world!')).toBe(Math.ceil(12 / 4));
+  // Superseded by AC-S7: counts now come from cl100k_base rather than
+  // characters/4. Full contract in tests/token-budget/tokenizer.test.ts.
+  it('estimateTokens returns real tokenizer counts', () => {
+    expect(estimateTokens('hello')).toBe(1);
+    expect(estimateTokens('hello world!')).toBe(3);
     expect(estimateTokens('')).toBe(0);
   });
 });
