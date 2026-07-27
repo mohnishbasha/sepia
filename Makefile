@@ -11,6 +11,7 @@ export TMPDIR
         test-tokens test-mutation test-fingerprint \
         test-leak test-boundary test-resilience test-example \
         run-example lint fmt fmt-check typecheck security ci clean \
+        cli-link cli-watch cli-unlink \
         patch chromium-build patch-check \
         docker-build docker-run docker-push \
         helm-lint helm-package helm-install helm-uninstall helm-test \
@@ -45,6 +46,23 @@ run: ## Run CLI locally. Usage: make run ARGS='run "book a table for 2"'
 
 dev: ## Run CLI in watch/dev mode
 	pnpm tsx watch cli/index.ts
+
+# ── The `sepia` command ───────────────────────────────────────────────────────
+# `make run` goes through tsx and is never stale, so it stays the way to work on
+# the CLI. These targets exist for exercising the real published artifact.
+
+cli-link: build ## Build and put `sepia` on your PATH (points at this working tree)
+	pnpm link --global
+	@echo
+	@echo "  sepia -> $$(command -v sepia)"
+	@echo "  NOTE: this runs dist/, not your sources. After editing, run 'make build'"
+	@echo "        (or leave 'make cli-watch' running) or you will execute stale code."
+
+cli-watch: ## Recompile dist/ on every change, so the linked `sepia` stays current
+	pnpm tsc -p tsconfig.build.json --watch
+
+cli-unlink: ## Remove `sepia` from your PATH
+	pnpm uninstall --global sepia || true
 
 run-example: ## Run research-assistant example. Usage: make run-example QUERIES="TypeScript generics,Rust ownership"
 	pnpm tsx examples/research-assistant/src/index.ts "$(QUERIES)"
