@@ -138,6 +138,12 @@ function resolveTokens(
   return estimateTokens(inputText) + estimateTokens(outputText);
 }
 
+// Hard ceiling on any inter-attempt sleep. mergeConfig already bounds the
+// configured value, but createAgent also accepts a hand-built SepiaConfig, so
+// the sink clamps too rather than trusting its input
+// (CodeQL js/resource-exhaustion).
+const MAX_RETRY_BACKOFF_MS = 30_000;
+
 // Agent factory
 export function createAgent(config: SepiaConfig): SepiaAgent {
   return {
@@ -319,7 +325,12 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
               } catch {
                 rejection = 'the response was not valid JSON';
                 if (attempt < config.agent.maxRetries) {
-                  await new Promise<void>((r) => setTimeout(r, config.agent.retryBackoffMs));
+                  await new Promise<void>((r) =>
+                    setTimeout(
+                      r,
+                      Math.min(MAX_RETRY_BACKOFF_MS, Math.max(0, config.agent.retryBackoffMs)),
+                    ),
+                  );
                 }
                 continue;
               }
@@ -346,7 +357,12 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             } catch (err) {
               rejection = err instanceof Error ? err.message : String(err);
               if (attempt < config.agent.maxRetries) {
-                await new Promise<void>((r) => setTimeout(r, config.agent.retryBackoffMs));
+                await new Promise<void>((r) =>
+                  setTimeout(
+                    r,
+                    Math.min(MAX_RETRY_BACKOFF_MS, Math.max(0, config.agent.retryBackoffMs)),
+                  ),
+                );
               }
             }
           }
@@ -425,7 +441,12 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
               } catch {
                 break;
               }
-              await new Promise<void>((r) => setTimeout(r, config.agent.retryBackoffMs));
+              await new Promise<void>((r) =>
+                setTimeout(
+                  r,
+                  Math.min(MAX_RETRY_BACKOFF_MS, Math.max(0, config.agent.retryBackoffMs)),
+                ),
+              );
               continue;
             }
             break;
