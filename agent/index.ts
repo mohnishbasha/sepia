@@ -148,6 +148,13 @@ const MAX_RETRY_BACKOFF_MS = 30_000;
 export function createAgent(config: SepiaConfig): SepiaAgent {
   return {
     async run(goal: string): Promise<RunTrace> {
+      // Bound the retry sleep once, up front. An unbounded duration reaching
+      // setTimeout parks the run (and, on the HTTP server, a concurrency slot)
+      // for as long as the caller likes (CodeQL js/resource-exhaustion).
+      let backoffMs = config.agent.retryBackoffMs;
+      if (!Number.isFinite(backoffMs) || backoffMs < 0) backoffMs = 0;
+      if (backoffMs > MAX_RETRY_BACKOFF_MS) backoffMs = MAX_RETRY_BACKOFF_MS;
+
       const runId = generateId();
       const sessionId = generateId();
       const startMs = Date.now();
@@ -325,12 +332,7 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
               } catch {
                 rejection = 'the response was not valid JSON';
                 if (attempt < config.agent.maxRetries) {
-                  await new Promise<void>((r) =>
-                    setTimeout(
-                      r,
-                      Math.min(MAX_RETRY_BACKOFF_MS, Math.max(0, config.agent.retryBackoffMs)),
-                    ),
-                  );
+                  await new Promise<void>((r) => setTimeout(r, backoffMs));
                 }
                 continue;
               }
@@ -357,12 +359,7 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             } catch (err) {
               rejection = err instanceof Error ? err.message : String(err);
               if (attempt < config.agent.maxRetries) {
-                await new Promise<void>((r) =>
-                  setTimeout(
-                    r,
-                    Math.min(MAX_RETRY_BACKOFF_MS, Math.max(0, config.agent.retryBackoffMs)),
-                  ),
-                );
+                await new Promise<void>((r) => setTimeout(r, backoffMs));
               }
             }
           }
@@ -441,12 +438,7 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
               } catch {
                 break;
               }
-              await new Promise<void>((r) =>
-                setTimeout(
-                  r,
-                  Math.min(MAX_RETRY_BACKOFF_MS, Math.max(0, config.agent.retryBackoffMs)),
-                ),
-              );
+              await new Promise<void>((r) => setTimeout(r, backoffMs));
               continue;
             }
             break;
