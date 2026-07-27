@@ -27,6 +27,7 @@ import type {
 import type { HandleMap } from '../resolver/index.js';
 import { createRateLimiter, createRobotsCache } from '../security/index.js';
 import type { RateLimiter, RobotsCache } from '../security/index.js';
+import { getPreset, validateAndStart } from '../fingerprint/index.js';
 
 export type { CompactView, ActionResult, ReadResult, WaitResult, TabInfo };
 
@@ -46,6 +47,8 @@ export interface EngineOptions {
   settleTimeoutMs?: number;
   /** Upper bound on retained handle records; least-recently-touched are evicted. */
   maxHandles?: number;
+  /** Fingerprint preset id. When set, the profile is applied and validated before use. */
+  profile?: string;
   security?: {
     rateLimitMs?: number;
     robotsAwareness?: boolean;
@@ -178,7 +181,19 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
   const inContainer = existsSync('/.dockerenv') || process.env['SEPIA_NO_SANDBOX'] === '1';
   const sandboxArgs = inContainer ? ['--no-sandbox', '--disable-setuid-sandbox'] : [];
 
+  // Resolve the preset before launching anything, so an unknown id fails
+  // without leaking a browser process (AC-F6).
+  const preset = opts?.profile !== undefined ? getPreset(opts.profile) : null;
+
   const contextOpts: Parameters<Browser['newContext']>[0] = {};
+  if (preset !== null) {
+    contextOpts.userAgent = preset.userAgent;
+    contextOpts.locale = preset.locale;
+    contextOpts.timezoneId = preset.timezone;
+    contextOpts.viewport = { width: preset.screenWidth, height: preset.screenHeight };
+    contextOpts.deviceScaleFactor = preset.deviceScaleFactor;
+  }
+  // Explicit overrides win over the preset.
   if (opts?.userAgent !== undefined) contextOpts.userAgent = opts.userAgent;
   if (opts?.viewport !== undefined) contextOpts.viewport = opts.viewport;
 
@@ -201,7 +216,34 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     context = await browser.newContext(contextOpts);
   }
 
+  if (preset !== null) {
+    // Applied before any page exists so it runs on every document, including
+    // the first navigation.
+    await context.addInitScript(`
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+        configurable: true,
+      });
+      if (typeof window.chrome === 'undefined') {
+        window.chrome = { runtime: {} };
+      }
+    `);
+  }
+
   const page: Page = await context.newPage();
+
+  if (preset !== null) {
+    // Coherence is checked before the session is handed out: a profile whose
+    // signals contradict each other is worse than no profile at all.
+    try {
+      await page.goto('about:blank');
+      await validateAndStart(preset, page);
+    } catch (err) {
+      if (browser !== undefined) await browser.close().catch(() => {});
+      else await context.close().catch(() => {});
+      throw err;
+    }
+  }
 
   // SR-10: rate limiter and robots cache — created only when the feature is enabled.
   const rateLimiter: RateLimiter | null =

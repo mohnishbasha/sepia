@@ -156,6 +156,7 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
       const engineOpts: EngineOptions = {
         headless: config.browser.headless,
         confidenceThreshold: config.agent.confidenceThreshold,
+        profile: config.browser.profile,
         ...(config.browser.settleTimeoutMs !== undefined
           ? { settleTimeoutMs: config.browser.settleTimeoutMs }
           : {}),

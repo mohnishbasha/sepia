@@ -153,6 +153,7 @@ export async function startMcpServer(opts: McpServerOptions): Promise<void> {
   const engineOpts: EngineOptions = {
     headless: opts.config.browser.headless,
     confidenceThreshold: opts.config.agent.confidenceThreshold,
+    profile: opts.config.browser.profile,
     ...(opts.config.browser.settleTimeoutMs !== undefined
       ? { settleTimeoutMs: opts.config.browser.settleTimeoutMs }
       : {}),

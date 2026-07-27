@@ -65,7 +65,9 @@ export const defaultConfig: SepiaConfig = {
     tokenEstimation: 'auto',
   },
   browser: {
-    profile: 'chrome-130-linux-x86_64',
+    // Must match the browser actually bundled with the pinned Playwright, or
+    // the profile is internally incoherent — the exact tell it exists to avoid.
+    profile: 'chrome-149-linux-x86_64',
     headless: true,
     ephemeral: true,
     humanTiming: false,
