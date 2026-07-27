@@ -38,45 +38,84 @@ export type SanitizedRunConfig = {
   model?: Partial<SepiaConfig['model']>;
 };
 
+type FieldSpec =
+  | { kind: 'number'; min: number; max: number }
+  | { kind: 'boolean' }
+  | { kind: 'enum'; values: readonly string[] }
+  | { kind: 'stringArray'; maxLength: number };
+
+// Bounds matter as much as the allowlist. Several of these values become timer
+// durations or loop counts, so an unbounded number is a denial of service: a
+// single request setting retryBackoffMs to 1e9 would hold a concurrency slot
+// for days (CodeQL js/resource-exhaustion). Clamp rather than reject, so a
+// caller asking for something merely aggressive still gets a run (SR-12).
+const AGENT_FIELDS: Record<string, FieldSpec> = {
+  maxSteps: { kind: 'number', min: 1, max: 200 },
+  maxTokensPerRun: { kind: 'number', min: 1, max: 10_000_000 },
+  verbosity: { kind: 'enum', values: ['minimal', 'standard', 'full'] },
+  retryBackoffMs: { kind: 'number', min: 0, max: 30_000 },
+  maxRetries: { kind: 'number', min: 0, max: 10 },
+  confidenceThreshold: { kind: 'number', min: 0, max: 1 },
+  maxHistorySteps: { kind: 'number', min: 1, max: 100 },
+};
+
+const SECURITY_FIELDS: Record<string, FieldSpec> = {
+  robotsAwareness: { kind: 'boolean' },
+  rateLimitMs: { kind: 'number', min: 0, max: 60_000 },
+  allowedDomains: { kind: 'stringArray', maxLength: 100 },
+};
+
+// `profile` is deliberately absent: a network caller has no reason to choose
+// the fingerprint preset, and an unknown id would fail the session at launch.
+const BROWSER_FIELDS: Record<string, FieldSpec> = {
+  headless: { kind: 'boolean' },
+  settleTimeoutMs: { kind: 'number', min: 0, max: 30_000 },
+};
+
+/** Coerce one value against its spec. Returns undefined to drop the field. */
+function coerce(value: unknown, spec: FieldSpec): unknown {
+  switch (spec.kind) {
+    case 'number':
+      if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+      return Math.min(spec.max, Math.max(spec.min, value));
+    case 'boolean':
+      return typeof value === 'boolean' ? value : undefined;
+    case 'enum':
+      return typeof value === 'string' && spec.values.includes(value) ? value : undefined;
+    case 'stringArray':
+      if (!Array.isArray(value)) return undefined;
+      return value.filter((v): v is string => typeof v === 'string').slice(0, spec.maxLength);
+  }
+}
+
+function pick(
+  section: unknown,
+  fields: Record<string, FieldSpec>,
+): Record<string, unknown> | undefined {
+  if (typeof section !== 'object' || section === null || Array.isArray(section)) return undefined;
+  const input = section as Record<string, unknown>;
+  const picked: Record<string, unknown> = {};
+  for (const [key, spec] of Object.entries(fields)) {
+    if (input[key] === undefined) continue;
+    const value = coerce(input[key], spec);
+    if (value !== undefined) picked[key] = value;
+  }
+  return Object.keys(picked).length > 0 ? picked : undefined;
+}
+
 export function sanitizeRunConfig(raw: unknown): SanitizedRunConfig {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
-  const input = raw as Record<string, Record<string, unknown> | undefined>;
+  const input = raw as Record<string, unknown>;
   const clean: SanitizedRunConfig = {};
 
-  const agent = input['agent'];
-  if (agent !== undefined && typeof agent === 'object') {
-    const picked: Record<string, unknown> = {};
-    for (const key of [
-      'maxSteps',
-      'maxTokensPerRun',
-      'verbosity',
-      'retryBackoffMs',
-      'maxRetries',
-      'confidenceThreshold',
-      'maxHistorySteps',
-    ]) {
-      if (agent[key] !== undefined) picked[key] = agent[key];
-    }
-    if (Object.keys(picked).length > 0) clean.agent = picked as Partial<SepiaConfig['agent']>;
-  }
+  const agent = pick(input['agent'], AGENT_FIELDS);
+  if (agent !== undefined) clean.agent = agent as Partial<SepiaConfig['agent']>;
 
-  const security = input['security'];
-  if (security !== undefined && typeof security === 'object') {
-    const picked: Record<string, unknown> = {};
-    for (const key of ['robotsAwareness', 'rateLimitMs', 'allowedDomains']) {
-      if (security[key] !== undefined) picked[key] = security[key];
-    }
-    if (Object.keys(picked).length > 0) clean.security = picked as Partial<SepiaConfig['security']>;
-  }
+  const security = pick(input['security'], SECURITY_FIELDS);
+  if (security !== undefined) clean.security = security as Partial<SepiaConfig['security']>;
 
-  const browser = input['browser'];
-  if (browser !== undefined && typeof browser === 'object') {
-    const picked: Record<string, unknown> = {};
-    for (const key of ['headless', 'profile', 'settleTimeoutMs']) {
-      if (browser[key] !== undefined) picked[key] = browser[key];
-    }
-    if (Object.keys(picked).length > 0) clean.browser = picked as Partial<SepiaConfig['browser']>;
-  }
+  const browser = pick(input['browser'], BROWSER_FIELDS);
+  if (browser !== undefined) clean.browser = browser as Partial<SepiaConfig['browser']>;
 
   return clean;
 }
@@ -236,7 +275,11 @@ export function startServer(opts: ServeOptions = {}): Server {
           json(res, trace.outcome === 'success' ? 200 : 422, trace);
         } catch (err) {
           totalErrors++;
-          json(res, 500, { ok: false, error: 'INTERNAL_ERROR', message: String(err) });
+          // Log the detail for the operator; return only a generic code. The
+          // underlying error can carry filesystem paths and stack frames
+          // (CodeQL js/stack-trace-exposure).
+          process.stderr.write(`[sepia] internal error handling /run: ${String(err)}\n`);
+          json(res, 500, { ok: false, error: 'INTERNAL_ERROR' });
         }
       } finally {
         inflight--;

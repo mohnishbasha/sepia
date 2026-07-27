@@ -290,13 +290,6 @@ export async function dispatch(
       return engine.screenshot(shotOpts);
     }
 
-    case 'screenshot': {
-      const shotOpts: { path?: string; fullPage?: boolean } = {};
-      if (action.path !== undefined) shotOpts.path = action.path;
-      if (action.fullPage !== undefined) shotOpts.fullPage = action.fullPage;
-      return engine.screenshot(shotOpts);
-    }
-
     case 'observe': {
       const obsOpts: { verbosity?: 'minimal' | 'standard' | 'full' } = {};
       if (action.verbosity !== undefined) obsOpts.verbosity = action.verbosity;

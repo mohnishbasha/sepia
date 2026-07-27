@@ -139,6 +139,23 @@ describe('SR-11 — request body limit', () => {
   });
 });
 
+describe('SR-12 — internal errors are not echoed to the caller', () => {
+  it('returns a generic 500 without the underlying error text', async () => {
+    const { createAgent } = await import('../../agent/index.js');
+    vi.mocked(createAgent).mockImplementation(() => {
+      throw new Error('ENOENT /home/deploy/.secret-profile/key.pem');
+    });
+
+    const url = await listen();
+    const res = await post(url, { goal: 'hi' }, { authorization: `Bearer ${KEY}` });
+    const body = (await res.json()) as Record<string, unknown>;
+
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(body)).not.toContain('.secret-profile');
+    expect(JSON.stringify(body)).not.toContain('ENOENT');
+  });
+});
+
 describe('SR-11 — concurrency cap is not racy', () => {
   it('never runs more than maxConcurrent agents simultaneously', async () => {
     // Count agents actually in flight. Total completions may exceed the cap

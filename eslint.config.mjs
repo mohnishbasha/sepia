@@ -14,6 +14,12 @@ export default tseslint.config(
       'no-eval': 'error',
       'no-new-func': 'error',
       'no-implied-eval': 'error',
+      // Duplicate case labels are legal TypeScript and the first one silently
+      // wins, so neither tsc nor the test suite catches a dispatch table that
+      // has grown a second copy of a branch.
+      'no-duplicate-case': 'error',
+      'no-fallthrough': 'error',
+      'no-unreachable': 'error',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
       // Allow _prefixed params/vars to mark intentionally unused stubs
