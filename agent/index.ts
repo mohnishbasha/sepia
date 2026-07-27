@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { createEngine } from '../engine/index.js';
 import type { EngineOptions } from '../engine/index.js';
 import { parseAction, dispatch } from '../actions/index.js';
+import type { TypedAction } from '../actions/index.js';
 import {
   createAuditor,
   redactSecrets,
@@ -244,28 +245,44 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             userMsg,
           ];
 
-          // Build model call params
-          const callParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
-            model: config.model.model,
-            messages: contextMessages,
-            max_tokens: 1024,
-          };
-          if (config.model.jsonMode === true) {
-            callParams.response_format = { type: 'json_object' };
-          }
-
-          // Call model with JSON parse retry
+          // Call the model, retrying with corrective feedback when the reply is
+          // unparseable or fails validation (AC-AG8). Re-sending a byte-identical
+          // request gives the model no reason to answer any differently, so each
+          // retry states what was wrong with the previous attempt.
           let rawContent = '';
-          let parsedRaw: unknown;
           let apiTokensUsed: number | null = null;
-          let modelCallSuccess = false;
+          let typedAction: TypedAction | undefined;
+          let doneSummary: string | undefined;
+          let sawDone = false;
+          let rejection: string | undefined;
+          let modelCallFailed = false;
 
-          for (let parseAttempt = 0; parseAttempt <= config.agent.maxRetries; parseAttempt++) {
+          for (let attempt = 0; attempt <= config.agent.maxRetries; attempt++) {
+            const attemptMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [...contextMessages];
+            if (rejection !== undefined) {
+              attemptMessages.push({ role: 'assistant', content: rawContent });
+              attemptMessages.push({
+                role: 'user',
+                content:
+                  `Your previous reply was rejected: ${rejection}. ` +
+                  `Reply with exactly one valid JSON action object and nothing else.`,
+              });
+            }
+
+            const callParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
+              model: config.model.model,
+              messages: attemptMessages,
+              max_tokens: 1024,
+            };
+            if (config.model.jsonMode === true) {
+              callParams.response_format = { type: 'json_object' };
+            }
+
             let completion: OpenAI.Chat.ChatCompletion;
             try {
               completion = await client.chat.completions.create(callParams);
             } catch (err) {
-              outcome = 'error';
+              modelCallFailed = true;
               steps.push({
                 stepN,
                 action: 'model_call',
@@ -285,27 +302,50 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             apiTokensUsed = completion.usage?.total_tokens ?? null;
             rawContent = completion.choices[0]?.message?.content ?? '';
 
-            // Try to parse; repair and retry on failure
+            let parsedRaw: unknown;
             try {
               parsedRaw = JSON.parse(rawContent);
-              modelCallSuccess = true;
-              break;
             } catch {
               const repaired = repairJson(rawContent);
               try {
                 parsedRaw = JSON.parse(repaired);
                 rawContent = repaired;
-                modelCallSuccess = true;
-                break;
               } catch {
-                if (parseAttempt < config.agent.maxRetries) {
+                rejection = 'the response was not valid JSON';
+                if (attempt < config.agent.maxRetries) {
                   await new Promise<void>((r) => setTimeout(r, config.agent.retryBackoffMs));
                 }
+                continue;
+              }
+            }
+
+            // done action — its summary is the run's answer (AC-AG5)
+            if (
+              typeof parsedRaw === 'object' &&
+              parsedRaw !== null &&
+              (parsedRaw as Record<string, unknown>)['action'] === 'done'
+            ) {
+              const summary = (parsedRaw as Record<string, unknown>)['summary'];
+              if (typeof summary === 'string' && summary.trim() !== '') {
+                doneSummary = summary;
+              }
+              sawDone = true;
+              break;
+            }
+
+            try {
+              typedAction = parseAction(parsedRaw);
+              rejection = undefined;
+              break;
+            } catch (err) {
+              rejection = err instanceof Error ? err.message : String(err);
+              if (attempt < config.agent.maxRetries) {
+                await new Promise<void>((r) => setTimeout(r, config.agent.retryBackoffMs));
               }
             }
           }
 
-          if (!modelCallSuccess) {
+          if (modelCallFailed) {
             outcome = 'error';
             break;
           }
@@ -319,26 +359,31 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
           );
           totalTokens += tokensUsed;
 
-          // Check for done action — its summary is the run's answer (AC-AG5)
-          if (
-            typeof parsedRaw === 'object' &&
-            parsedRaw !== null &&
-            (parsedRaw as Record<string, unknown>)['action'] === 'done'
-          ) {
-            const summary = (parsedRaw as Record<string, unknown>)['summary'];
-            if (typeof summary === 'string' && summary.trim() !== '') {
-              answer = summary;
-            }
+          if (sawDone) {
+            if (doneSummary !== undefined) answer = doneSummary;
             outcome = 'success';
             break;
           }
 
-          // Parse as typed action
-          let typedAction: ReturnType<typeof parseAction>;
-          try {
-            typedAction = parseAction(parsedRaw);
-          } catch {
+          // Retries exhausted without a valid action — record why, then stop.
+          if (typedAction === undefined) {
             outcome = 'error';
+            steps.push({
+              stepN,
+              action: 'model_call',
+              confidence: 0,
+              tokensUsed,
+              latencyMs: Date.now() - stepStart,
+              result: {
+                ok: false,
+                confidence: 0,
+                error: {
+                  code: 'INVALID_ACTION',
+                  message: rejection ?? 'model produced no valid action',
+                },
+              },
+              secretsRedacted: false,
+            });
             break;
           }
 

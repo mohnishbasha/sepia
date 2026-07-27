@@ -73,8 +73,61 @@ export interface TypedAction {
   verbosity?: 'minimal' | 'standard' | 'full';
 }
 
+const VERBOSITY_VALUES = new Set(['minimal', 'standard', 'full']);
+
+function requireString(obj: Record<string, unknown>, field: string, action: string): void {
+  const value = obj[field];
+  if (value === undefined || value === null || value === '') {
+    throw new Error(`${action} requires ${field}`);
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`${action} ${field} must be a string`);
+  }
+}
+
+function optionalString(obj: Record<string, unknown>, field: string, action: string): void {
+  const value = obj[field];
+  if (value !== undefined && typeof value !== 'string') {
+    throw new Error(`${action} ${field} must be a string`);
+  }
+}
+
+function optionalBoolean(obj: Record<string, unknown>, field: string, action: string): void {
+  const value = obj[field];
+  if (value !== undefined && typeof value !== 'boolean') {
+    throw new Error(`${action} ${field} must be a boolean`);
+  }
+}
+
+function optionalNumber(obj: Record<string, unknown>, field: string, action: string): void {
+  const value = obj[field];
+  if (value !== undefined && (typeof value !== 'number' || Number.isNaN(value))) {
+    throw new Error(`${action} ${field} must be a number`);
+  }
+}
+
+function requireCondition(obj: Record<string, unknown>, action: string): void {
+  const condition = obj['condition'];
+  if (condition === undefined || condition === null) {
+    throw new Error(`${action} requires condition`);
+  }
+  if (typeof condition !== 'object') {
+    throw new Error(`${action} condition must be an object`);
+  }
+  const type = (condition as Record<string, unknown>)['type'];
+  if (type !== 'url' && type !== 'element' && type !== 'networkIdle') {
+    throw new Error(`${action} condition.type must be url, element, or networkIdle`);
+  }
+}
+
+/**
+ * Validate a decoded model response against the typed action contract (AC-A5).
+ *
+ * Validation happens here, at the trust boundary, so the engine can rely on
+ * every required field being present and correctly typed.
+ */
 export function parseAction(raw: unknown): TypedAction {
-  if (typeof raw !== 'object' || raw === null) {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     throw new Error('Action must be an object');
   }
   const obj = raw as Record<string, unknown>;
@@ -82,6 +135,79 @@ export function parseAction(raw: unknown): TypedAction {
   if (typeof action !== 'string' || !isValidActionName(action)) {
     throw new Error(`Unknown or invalid action: ${String(action)}`);
   }
+
+  switch (action) {
+    case 'click':
+    case 'hover':
+    case 'read':
+      requireString(obj, 'handle', action);
+      break;
+
+    case 'type':
+      requireString(obj, 'handle', action);
+      if (obj['text'] === undefined || obj['text'] === null) {
+        throw new Error(`${action} requires text`);
+      }
+      if (typeof obj['text'] !== 'string') {
+        throw new Error(`${action} text must be a string`);
+      }
+      optionalBoolean(obj, 'submit', action);
+      break;
+
+    case 'select':
+      requireString(obj, 'handle', action);
+      requireString(obj, 'option', action);
+      break;
+
+    case 'check':
+      requireString(obj, 'handle', action);
+      optionalBoolean(obj, 'checked', action);
+      break;
+
+    case 'scroll':
+      optionalString(obj, 'scrollTarget', action);
+      optionalNumber(obj, 'scrollDistance', action);
+      break;
+
+    case 'press':
+      requireString(obj, 'key', action);
+      break;
+
+    case 'open':
+      requireString(obj, 'url', action);
+      break;
+
+    case 'wait':
+      requireCondition(obj, action);
+      optionalNumber(obj, 'timeoutMs', action);
+      break;
+
+    case 'observe': {
+      const verbosity = obj['verbosity'];
+      if (verbosity !== undefined && !VERBOSITY_VALUES.has(String(verbosity))) {
+        throw new Error(`${action} verbosity must be minimal, standard, or full`);
+      }
+      break;
+    }
+
+    case 'tabs.new':
+      optionalString(obj, 'url', action);
+      break;
+
+    case 'tabs.close':
+      optionalString(obj, 'tabId', action);
+      break;
+
+    case 'tabs.switch':
+      requireString(obj, 'tabId', action);
+      break;
+
+    case 'tabs.list':
+    case 'back':
+    case 'forward':
+      break;
+  }
+
   return obj as unknown as TypedAction;
 }
 
