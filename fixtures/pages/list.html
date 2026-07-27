@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Item list</title>
+  </head>
+  <body>
+    <h1>Items</h1>
+
+    <!--
+      Every row's button has the identical accessible name "Delete".
+      Nothing but position distinguishes them, which is exactly the case a
+      semantic-handle system must still address unambiguously (AC-R6/AC-R7).
+    -->
+    <ul>
+      <li>Item 1 <button type="button" onclick="del(1)">Delete</button></li>
+      <li>Item 2 <button type="button" onclick="del(2)">Delete</button></li>
+      <li>Item 3 <button type="button" onclick="del(3)">Delete</button></li>
+      <li>Item 4 <button type="button" onclick="del(4)">Delete</button></li>
+      <li>Item 5 <button type="button" onclick="del(5)">Delete</button></li>
+    </ul>
+
+    <section aria-label="Result">
+      <h2 id="result"></h2>
+    </section>
+
+    <script>
+      function del(n) {
+        document.getElementById('result').textContent = 'Deleted item ' + n;
+      }
+    </script>
+  </body>
+</html>

@@ -2,7 +2,12 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { serialize } from '../serializer/index.js';
 import type { AXSnapshot } from '../serializer/index.js';
-import { createHandleMap, gateHandle, processCompactView } from '../resolver/index.js';
+import {
+  createHandleMap,
+  clearHandleMap,
+  gateHandle,
+  processCompactView,
+} from '../resolver/index.js';
 import type { SemanticFingerprint } from '../resolver/index.js';
 import type {
   CompactView,
@@ -208,7 +213,7 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     try {
       const origin = new URL(url).origin;
       if (origin !== lastOrigin) {
-        handleMap.clear();
+        clearHandleMap(handleMap);
         lastOrigin = origin;
       }
     } catch {
@@ -265,14 +270,21 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
           };
     }
 
-    return { ok: true, fp: decision.record.fingerprint, confidence: decision.confidence };
+    return { ok: true, fp: decision.target, confidence: decision.confidence };
   }
 
-  /** Resolve a fingerprint to the Playwright locator the action will run against. */
+  /**
+   * Resolve a fingerprint to the Playwright locator the action will run against.
+   *
+   * Uses the ordinal among identically-named same-role elements, so a handle
+   * denoting the third "Delete" button acts on the third one. `.first()` would
+   * silently act on the first match regardless of which handle was requested
+   * (AC-R7).
+   */
   function locate(fp: SemanticFingerprint) {
     return page
       .getByRole(fp.role as Parameters<Page['getByRole']>[0], { name: fp.accessibleName })
-      .first();
+      .nth(fp.ordinalAmongSameRoleAndName);
   }
 
   return {

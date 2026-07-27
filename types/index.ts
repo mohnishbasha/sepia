@@ -34,6 +34,17 @@ export interface NodeState {
   selected?: boolean;
 }
 
+/**
+ * Attributes that identify an element more durably than its position.
+ * Optional: not every source can supply them.
+ */
+export interface StableAttrs {
+  id?: string;
+  name?: string;
+  dataTestId?: string;
+  ariaLabel?: string;
+}
+
 export interface CompactNode {
   handle?: string;
   role: string;
@@ -41,6 +52,7 @@ export interface CompactNode {
   value?: string;
   state?: NodeState;
   indent: number;
+  attrs?: StableAttrs;
   children?: CompactNode[];
 }
 
