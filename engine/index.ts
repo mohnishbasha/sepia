@@ -1,5 +1,11 @@
 import { existsSync, mkdirSync } from 'node:fs';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type CDPSession,
+  type Page,
+} from 'playwright';
 import { serialize } from '../serializer/index.js';
 import type { AXSnapshot } from '../serializer/index.js';
 import {
@@ -7,6 +13,7 @@ import {
   clearHandleMap,
   gateHandle,
   processCompactView,
+  pruneHandleMap,
 } from '../resolver/index.js';
 import type { SemanticFingerprint } from '../resolver/index.js';
 import type {
@@ -35,6 +42,10 @@ export interface EngineOptions {
    * Below this the engine refuses rather than acting on a guess (AC-AG6).
    */
   confidenceThreshold?: number;
+  /** Cap on each settle wait. Pages that never go network-idle stop dominating run cost. */
+  settleTimeoutMs?: number;
+  /** Upper bound on retained handle records; least-recently-touched are evicted. */
+  maxHandles?: number;
   security?: {
     rateLimitMs?: number;
     robotsAwareness?: boolean;
@@ -86,9 +97,10 @@ interface CDPAXNode {
 }
 
 // Fetch the full AX tree via CDP and convert directly to AXSnapshot.
-async function getAXSnapshot(page: Page): Promise<AXSnapshot | null> {
-  const client = await page.context().newCDPSession(page);
-  try {
+// The caller owns the session lifetime — attaching and detaching per call cost
+// a round trip on every observation.
+async function getAXSnapshot(client: CDPSession): Promise<AXSnapshot | null> {
+  {
     const { nodes } = (await client.send('Accessibility.getFullAXTree')) as {
       nodes: CDPAXNode[];
     };
@@ -146,8 +158,6 @@ async function getAXSnapshot(page: Page): Promise<AXSnapshot | null> {
     }
 
     return convert(root);
-  } finally {
-    await client.detach();
   }
 }
 
@@ -205,8 +215,37 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
   const handleMap: HandleMap = createHandleMap();
   let lastOrigin = '';
 
+  const settleTimeoutMs = opts?.settleTimeoutMs ?? 1_500;
+  const maxHandles = opts?.maxHandles ?? 2_000;
+
+  /**
+   * Wait for the page to be worth observing.
+   *
+   * Network-idle is only ever best-effort: pages with long-polling, SSE,
+   * websockets, or analytics beacons never reach it, and waiting out a long
+   * timeout on every observation dominated the cost of a run (AC-R8). The DOM
+   * is settled enough to serialize well before the network is.
+   */
   async function settle(): Promise<void> {
-    await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+    await page.waitForLoadState('domcontentloaded', { timeout: settleTimeoutMs }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: settleTimeoutMs }).catch(() => {});
+  }
+
+  // One CDP session for the page's lifetime, recreated only if it drops.
+  let cdp: CDPSession | null = null;
+  async function cdpSession(): Promise<CDPSession> {
+    if (cdp === null) cdp = await page.context().newCDPSession(page);
+    return cdp;
+  }
+
+  async function axSnapshot(): Promise<AXSnapshot | null> {
+    try {
+      return await getAXSnapshot(await cdpSession());
+    } catch {
+      // Session can be torn down by a cross-document navigation; reattach once.
+      cdp = null;
+      return getAXSnapshot(await cdpSession());
+    }
   }
 
   function maybeResetHandles(url: string): void {
@@ -222,9 +261,11 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
   }
 
   async function getView(): Promise<{ view: CompactView; snap: AXSnapshot | null }> {
-    const snap = await getAXSnapshot(page);
+    const snap = await axSnapshot();
     const view = serialize(snap, null, { url: page.url(), title: await page.title() });
-    return { view: processCompactView(view, handleMap), snap };
+    const processed = processCompactView(view, handleMap);
+    pruneHandleMap(handleMap, maxHandles);
+    return { view: processed, snap };
   }
 
   const confidenceThreshold = opts?.confidenceThreshold ?? 0;
@@ -348,7 +389,7 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
       verbosity?: 'minimal' | 'standard' | 'full';
     }): Promise<CompactView> {
       await settle();
-      const snap = await getAXSnapshot(page);
+      const snap = await axSnapshot();
       const serOpts: { verbosity?: 'minimal' | 'standard' | 'full'; url: string; title: string } = {
         url: page.url(),
         title: await page.title(),
@@ -357,7 +398,9 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
         serOpts.verbosity = observeOpts.verbosity;
       }
       const view = serialize(snap, null, serOpts);
-      return processCompactView(view, handleMap);
+      const processed = processCompactView(view, handleMap);
+      pruneHandleMap(handleMap, maxHandles);
+      return processed;
     },
 
     async click(handle: string): Promise<ActionResult> {
@@ -664,6 +707,10 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     },
 
     async close(): Promise<void> {
+      if (cdp !== null) {
+        await cdp.detach().catch(() => {});
+        cdp = null;
+      }
       // Persistent context has no separate Browser object; closing the context is enough.
       if (browser !== undefined) {
         await browser.close();

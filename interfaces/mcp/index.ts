@@ -153,6 +153,9 @@ export async function startMcpServer(opts: McpServerOptions): Promise<void> {
   const engineOpts: EngineOptions = {
     headless: opts.config.browser.headless,
     confidenceThreshold: opts.config.agent.confidenceThreshold,
+    ...(opts.config.browser.settleTimeoutMs !== undefined
+      ? { settleTimeoutMs: opts.config.browser.settleTimeoutMs }
+      : {}),
   };
   if (opts.config.browser.executablePath !== undefined) {
     engineOpts.executablePath = opts.config.browser.executablePath;

@@ -23,6 +23,8 @@ export interface BrowserConfig {
   humanTiming: boolean;
   /** Directory where named persistent profiles are stored. Required when ephemeral=false. */
   profileStorePath?: string;
+  /** Cap on each page-settle wait, in ms. Bounds observation cost on never-idle pages. */
+  settleTimeoutMs?: number;
 }
 
 export interface AgentConfig {
@@ -67,6 +69,7 @@ export const defaultConfig: SepiaConfig = {
     headless: true,
     ephemeral: true,
     humanTiming: false,
+    settleTimeoutMs: 1_500,
   },
   agent: {
     maxSteps: 50,

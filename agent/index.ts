@@ -156,6 +156,9 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
       const engineOpts: EngineOptions = {
         headless: config.browser.headless,
         confidenceThreshold: config.agent.confidenceThreshold,
+        ...(config.browser.settleTimeoutMs !== undefined
+          ? { settleTimeoutMs: config.browser.settleTimeoutMs }
+          : {}),
       };
       if (config.browser.executablePath !== undefined) {
         engineOpts.executablePath = config.browser.executablePath;
