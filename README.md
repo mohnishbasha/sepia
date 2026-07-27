@@ -18,14 +18,22 @@ Most browser automation tools send raw HTML or screenshots to the model — thou
 
 Sepia solves all three:
 
-**1. Token-efficient compact view (~750 tokens vs ~8,700+ for raw DOM)**
-Sepia distills each page to a compact semantic outline — one line per meaningful node — built from the accessibility tree joined against the DOM. The model reasons about handles like `[e12] button "Sign in"`, never raw selectors. Median view: ≤ 900 tokens on a 20-page corpus, measured in CI on every commit.
+**1. Token-efficient compact view**
+Sepia distills each page to a compact semantic outline — one line per meaningful node — built from the accessibility tree. The model reasons about handles like `[e12] button "Sign in"`, never raw selectors. Token counts come from the real `cl100k_base` tokenizer, not a character estimate.
+
+The committed corpus is 5 synthetic fixtures (`fixtures/corpus/`), on which the median view is **80 tokens** and the maximum 111. The CI gate asserts median ≤ 900 and max ≤ 1,500, which those fixtures clear comfortably — they are regression guards, not a benchmark against real-world pages. No measured comparison against raw-DOM baselines ships in this repo.
 
 **2. Stable handles that survive layout shifts**
-Handles are derived from a semantic fingerprint (`role + accessible name + stable attributes + nearby label`), not DOM path or position. When a site ships a redesign that moves your button to a different container, the handle stays the same. When an element is genuinely gone, Sepia marks it `stale` and stops — it never silently clicks the wrong thing.
+Handles are derived from a semantic fingerprint (`role + accessible name + ordinal among identically-named siblings`), not DOM path or position. When a site ships a redesign that moves your button to a different container, the handle stays the same. When an element is genuinely gone, Sepia marks it `stale` and stops.
 
-**3. Source-level fingerprint coherence (JA3/JA4 + full cross-signal)**
-Header patching is not enough. Sepia patches Chromium's BoringSSL layer so the TLS ClientHello itself matches a real Chrome build. The entire profile is coherent as one unit: TLS fingerprint, User-Agent, Client Hints, WebGL/Canvas, fonts, timezone, and locale all describe the same plausible machine. A validation harness checks this before every session starts.
+Elements that share a role _and_ an accessible name — every "Delete" button in a list — each get their own handle, and acting on a handle targets that element specifically. Below `agent.confidenceThreshold` (default `0.7`) Sepia refuses to act at all and the run ends `stale_bail`.
+
+The fingerprint also carries optional stable attributes (`id`, `name`, `data-testid`, `aria-label`) and they participate in scoring, but the bundled CDP accessibility-tree path does not populate them; they are available to callers supplying their own nodes.
+
+**3. Coherent browser profile, validated before every session**
+The configured preset is applied at context creation — User-Agent, locale, timezone, viewport — and `navigator.webdriver` is masked. A coherence harness runs before the session is handed out; if the signals contradict each other, the session does not start.
+
+**Scope, honestly:** the TLS-level (JA3/JA4) work is _not_ implemented in this repository. `patches/` documents an intended four-patch BoringSSL stack but contains no `.patch` files, so `make chromium-build` has nothing to apply and AC-F1/AC-F2 remain `todo`. What ships today is JavaScript- and header-level coherence, which does not defeat TLS fingerprinting.
 
 ---
 
@@ -80,10 +88,17 @@ Output is a `RunTrace` JSON object on stdout:
 {
   "goal": "What is the current Node.js LTS version on nodejs.org?",
   "outcome": "success",
+  "answer": "The current Node.js LTS release is 22.11.0.",
   "totalSteps": 3,
   "totalTokens": 2140,
   "steps": [...]
 }
+```
+
+`answer` carries the model's `done` summary — this is the run's result. For just that string:
+
+```bash
+make run ARGS='run "What is the Node.js LTS version?" --answer-only'
 ```
 
 ### HTTP server
@@ -107,7 +122,21 @@ curl -s -X POST http://localhost:3000/run \
   | jq .outcome
 ```
 
-Returns `200` on `success`, `422` on `budget_exceeded` or `error`, `503` when the concurrent session cap is reached.
+Returns `200` on `success`, `422` on `budget_exceeded` or `error`, `503` when the concurrent session cap is reached, `401` when the bearer token is missing or wrong, and `413` when the body exceeds `maxBodyBytes` (default 1 MB).
+
+**Authentication is required.** The server refuses to start unless you either set `SEPIA_SERVER_API_KEY` or explicitly opt out with `--allow-unauthenticated`. An open agent runner can be driven to fetch arbitrary URLs using your model credentials, so running without auth has to be a deliberate choice.
+
+```bash
+export SEPIA_SERVER_API_KEY=$(openssl rand -hex 32)
+make run ARGS='serve --port 3000'
+
+curl -s -X POST http://localhost:3000/run \
+  -H "Authorization: Bearer $SEPIA_SERVER_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"goal": "..."}'
+```
+
+A request may also carry a `config` object, but only a safe subset is honoured: fields under `agent`, `security`, and the `headless` / `profile` / `settleTimeoutMs` browser fields. Anything that would redirect data or execution — `model.endpoint`, `model.apiKey`, `browser.executablePath`, `browser.profileStorePath` — is discarded.
 
 **`GET /health`** — liveness check:
 
@@ -118,13 +147,15 @@ curl http://localhost:3000/health
 
 **Environment variables for the HTTP server:**
 
-| Variable               | Default                        | Description                         |
-| ---------------------- | ------------------------------ | ----------------------------------- |
-| `SEPIA_HTTP_PORT`      | `3000`                         | Port to listen on                   |
-| `SEPIA_MAX_CONCURRENT` | `5`                            | Max concurrent agent runs           |
-| `SEPIA_MODEL_ENDPOINT` | `https://api.anthropic.com/v1` | Model API base URL                  |
-| `SEPIA_MODEL`          | `claude-sonnet-4-6`            | Model name                          |
-| `SEPIA_API_KEY`        | —                              | API key (optional for local models) |
+| Variable                      | Default                        | Description                           |
+| ----------------------------- | ------------------------------ | ------------------------------------- |
+| `SEPIA_HTTP_PORT`             | `3000`                         | Port to listen on                     |
+| `SEPIA_MAX_CONCURRENT`        | `5`                            | Max concurrent agent runs             |
+| `SEPIA_SERVER_API_KEY`        | —                              | Bearer token required on `POST /run`  |
+| `SEPIA_ALLOW_UNAUTHENTICATED` | `false`                        | Run with no auth (deliberate opt-out) |
+| `SEPIA_MODEL_ENDPOINT`        | `https://api.anthropic.com/v1` | Model API base URL                    |
+| `SEPIA_MODEL`                 | `claude-sonnet-4-6`            | Model name                            |
+| `SEPIA_API_KEY`               | —                              | API key (optional for local models)   |
 
 ### MCP stdio
 
@@ -134,7 +165,7 @@ For use as a tool server with Claude Desktop or any MCP 2024-11 host:
 make run ARGS='mcp'
 ```
 
-Registers 12 tools: `open`, `observe`, `click`, `type`, `select`, `check`, `hover`, `scroll`, `press`, `read`, `back`, `forward`.
+Registers 13 tools: `open`, `observe`, `click`, `type`, `select`, `check`, `hover`, `scroll`, `press`, `read`, `screenshot`, `back`, `forward`.
 
 ---
 
@@ -189,14 +220,23 @@ kubectl create secret generic sepia-credentials \
   --namespace sepia \
   --from-literal=SEPIA_API_KEY=sk-ant-...
 
-# 2. Install the chart
+# 2. Create the bearer token the HTTP API requires
+kubectl create secret generic sepia-server-auth \
+  --namespace sepia \
+  --from-literal=SEPIA_SERVER_API_KEY=$(openssl rand -hex 32)
+
+# 3. Install the chart
 helm upgrade --install sepia helm/sepia \
   --namespace sepia \
   --set existingSecret=sepia-credentials \
+  --set serverAuth.existingSecret=sepia-server-auth \
   --set env.SEPIA_MODEL_ENDPOINT=https://api.anthropic.com/v1 \
   --set env.SEPIA_MODEL=claude-sonnet-4-6 \
   --wait
 ```
+
+Without `serverAuth.existingSecret` (or `serverAuth.allowUnauthenticated=true`) the pod exits at
+startup with an explanatory error rather than serving unauthenticated traffic.
 
 Or with `make`:
 
@@ -277,17 +317,18 @@ The serializer and resolver are **pure and deterministic** — no LLM calls, ful
 
 All configuration is via a `SepiaConfig` object or environment variables. Secure defaults everywhere — opt-in for anything that could expose data.
 
-| Key                         | Default                        | Description                                     |
-| --------------------------- | ------------------------------ | ----------------------------------------------- |
-| `model.endpoint`            | `https://api.anthropic.com/v1` | Model API endpoint (Anthropic or OpenAI-compat) |
-| `model.model`               | `claude-sonnet-4-6`            | Model name                                      |
-| `browser.ephemeral`         | `true`                         | Ephemeral profile (cleared on session end)      |
-| `browser.headless`          | `true`                         | Headless mode                                   |
-| `browser.profile`           | `chrome-130-linux-x86_64`      | Fingerprint preset                              |
-| `agent.maxSteps`            | `50`                           | Max steps per run                               |
-| `agent.confidenceThreshold` | `0.7`                          | Re-observe if confidence drops below this       |
-| `privacy.telemetry`         | `false`                        | Usage telemetry (off by default)                |
-| `security.robotsAwareness`  | `false`                        | Respect robots.txt (opt-in)                     |
+| Key                         | Default                        | Description                                      |
+| --------------------------- | ------------------------------ | ------------------------------------------------ |
+| `model.endpoint`            | `https://api.anthropic.com/v1` | Model API endpoint (Anthropic or OpenAI-compat)  |
+| `model.model`               | `claude-sonnet-4-6`            | Model name                                       |
+| `browser.ephemeral`         | `true`                         | Ephemeral profile (cleared on session end)       |
+| `browser.headless`          | `true`                         | Headless mode                                    |
+| `browser.profile`           | `chrome-149-linux-x86_64`      | Fingerprint preset (matches the bundled browser) |
+| `agent.maxSteps`            | `50`                           | Max steps per run                                |
+| `agent.confidenceThreshold` | `0.7`                          | Refuse to act below this resolver confidence     |
+| `browser.settleTimeoutMs`   | `1500`                         | Cap on each page-settle wait                     |
+| `privacy.telemetry`         | `false`                        | Usage telemetry (off by default)                 |
+| `security.robotsAwareness`  | `false`                        | Respect robots.txt (opt-in)                      |
 
 See [`config/index.ts`](config/index.ts) for the full typed schema.
 
@@ -339,17 +380,17 @@ make test-fingerprint # AC-F1 and AC-F2 will pass once the binary exists
 
 ## Test suite
 
-| Suite                                             | Count               | Gate                 |
-| ------------------------------------------------- | ------------------- | -------------------- |
-| Unit (serializer, resolver, privacy, fingerprint) | ~50                 | `make test-unit`     |
-| Contract (all 16 actions, stale-handle)           | ~20                 | `make test`          |
-| Integration (E2E browser, trace-secrets)          | ~10                 | `make test`          |
-| Resilience (budget, retry)                        | ~6                  | `make test`          |
-| Token budget (M1 corpus)                          | ~5                  | `make test-tokens`   |
-| Mutation (M2 handle stability)                    | ~5                  | `make test-mutation` |
-| **Total**                                         | **96 pass, 2 todo** | `make ci`            |
+| Suite                                             | Gate                 |
+| ------------------------------------------------- | -------------------- |
+| Unit (serializer, resolver, privacy, fingerprint) | `make test-unit`     |
+| Contract (action enum, validation, stale-handle)  | `make test`          |
+| Integration (E2E browser, agent loop, HTTP)       | `make test`          |
+| Resilience (budget, retry, stale bail)            | `make test`          |
+| Token budget (corpus + tokenizer)                 | `make test-tokens`   |
+| Mutation (handle stability)                       | `make test-mutation` |
+| **Total**                                         | **231 pass, 2 todo** |
 
-The 2 todo items (AC-F1, AC-F2) require `make chromium-build`. Everything else passes on standard CI.
+The 2 todo items are AC-F1/AC-F2 (JA3/JA4). They cannot pass from this repository as it stands — `patches/` contains no patch files for `make chromium-build` to apply.
 
 ---
 

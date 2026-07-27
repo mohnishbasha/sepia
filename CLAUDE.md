@@ -15,7 +15,7 @@ Sepia is built in strict phases. Do not write implementation code before the cur
 | 2     | Implement, test-first. Each milestone maps to numbered FRs. | `make ci` green; acceptance tests pass  |
 | 3     | Harden and verify. Full validation harness.                 | All AC-\* tests pass; spec matches code |
 
-**Current status:** Phase 3 complete. 126 tests passing (2 permanent todos: AC-F1/AC-F2 require `make chromium-build`). See [`docs/phase3-addendum.md`](docs/phase3-addendum.md) for the full AC-\* coverage matrix and hardening details.
+**Current status:** Phase 3 complete, plus a post-Phase-3 hardening pass. 231 tests passing, 2 todo (AC-F1/AC-F2 — see below). See [`docs/phase3-addendum.md`](docs/phase3-addendum.md) for the AC-\* coverage matrix.
 
 See [`docs/phase1-spec.md`](docs/phase1-spec.md) for the numbered functional requirements (FR-_) and acceptance criteria (AC-_) that govern implementation.
 
@@ -31,7 +31,7 @@ See [`docs/phase1-spec.md`](docs/phase1-spec.md) for the numbered functional req
 | Directory names      | `sepia/`, `sepia-*` |
 | All machine contexts | `sepia` (lowercase) |
 
-A lint rule blocks any PR that introduces a casing variant. If you see `Sepia` in code (not prose), fix it.
+There is **no** automated lint rule enforcing this — it is reviewer-enforced. If you see a casing variant in code (not prose), fix it by hand.
 
 ---
 
@@ -46,11 +46,12 @@ fingerprint/    → types only
 privacy/        → types only
 security/       → types only
 telemetry/      → types only
-actions/        → types, serializer, resolver
-engine/         → types, serializer, actions, fingerprint, config, security
-agent/          → types, config, serializer, resolver, actions, engine, privacy, telemetry
-interfaces/*    → agent, config, types
-cli/            → agent, config, types
+actions/        → types, engine
+engine/         → types, serializer, resolver, fingerprint, security
+agent/          → types, config, serializer, actions, engine, privacy, telemetry
+training/       → agent (types only)
+interfaces/*    → agent, engine, config, types
+cli/            → agent, config, interfaces
 ```
 
 **Lower layers never import from higher layers.** Enforced by `eslint.config.mjs` `no-restricted-imports` rules. Violations fail `make lint` and block CI.
@@ -65,11 +66,13 @@ The `types/` module is the only zero-dependency shared module. All others may im
 
 2. **Interact by handle, never raw selector.** No CSS selector, XPath, or DOM path ever reaches the model or comes back from it. All element targeting goes through the resolver.
 
-3. **Fail closed on ambiguity.** If a handle resolves with confidence < `config.agent.confidenceThreshold`, stop and report — do not act. If a handle is `stale`, return an error; never click a wrong element.
+3. **Fail closed on ambiguity.** Enforced by `gateHandle()` in `resolver/index.ts`, which every engine action calls before touching the page. Below `config.agent.confidenceThreshold` the engine returns `LOW_CONFIDENCE` and does not act; a missing element returns `STALE_HANDLE`. When the agent exhausts `maxRetries` against either, the run ends `stale_bail`.
 
-4. **Secrets never enter LLM context or logs.** Credentials are stored in the encrypted profile store. The `privacy/` module redacts them before any payload leaves the process. This is covered by automated tests in `tests/data-boundary/` and `tests/unit/`.
+   Elements sharing a role and accessible name get distinct handles, and actions target the handle's own ordinal — never `.first()`. Regression coverage: `tests/integration/list-handles.test.ts`.
 
-5. **Serializer and resolver are pure and deterministic.** No LLM calls, no network calls, no side effects. If you need to call a model in these modules, you're in the wrong module.
+4. **Secrets never enter LLM context or logs.** `redactCompactView()` strips secret-named field values and credential-shaped strings from the view before it is formatted for the model; `sanitizeForLLM()` then masks prompt-injection patterns. Covered by `tests/data-boundary/`.
+
+5. **Serializer and resolver are pure and deterministic.** No LLM calls, no network calls. Token counting uses a local `cl100k_base` table (no network). One documented impurity: `serialize()` stamps `timestampMs` via `Date.now()`, so compare views with that field excluded.
 
 6. **Core modules stay LLM-free.** `types`, `config`, `serializer`, `resolver`, `fingerprint`, `privacy`, `telemetry`, `engine`, `actions` — none of these import from `agent` or make model API calls.
 

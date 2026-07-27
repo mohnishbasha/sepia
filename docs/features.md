@@ -32,11 +32,11 @@ Sepia is an open-source, secure AI browser engine. A user or an upstream LLM des
 
 Three hard problems solved together:
 
-| Problem          | What most tools do                           | What Sepia does                                     |
-| ---------------- | -------------------------------------------- | --------------------------------------------------- |
-| Token cost       | Send raw HTML (8,700+ tokens) or screenshots | Compact AX-tree outline (median ≤ 900 tokens)       |
-| Layout fragility | CSS selectors / XPath break on redesign      | Semantic handles stable across DOM mutations        |
-| Detection        | Patch `User-Agent` header                    | Patch BoringSSL source; full cross-signal coherence |
+| Problem          | What most tools do                      | What Sepia does                                               |
+| ---------------- | --------------------------------------- | ------------------------------------------------------------- |
+| Token cost       | Send raw HTML or screenshots            | Compact AX-tree outline, counted with `cl100k_base`           |
+| Layout fragility | CSS selectors / XPath break on redesign | Semantic handles stable across DOM mutations                  |
+| Detection        | Patch `User-Agent` header               | Validated JS/header profile coherence (no TLS layer — see §8) |
 
 ---
 
@@ -92,9 +92,10 @@ All actions return a typed result. No action ever evaluates model output as code
 
 ### Observation
 
-| Action    | Signature        | Description                                                                                           |
-| --------- | ---------------- | ----------------------------------------------------------------------------------------------------- |
-| `observe` | `observe(opts?)` | Return the current `CompactView` of the page. Accepts `verbosity: 'minimal' \| 'standard' \| 'full'`. |
+| Action       | Signature           | Description                                                                                                             |
+| ------------ | ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `observe`    | `observe(opts?)`    | Return the current `CompactView` of the page. Accepts `verbosity: 'minimal' \| 'standard' \| 'full'`.                   |
+| `screenshot` | `screenshot(opts?)` | Capture a PNG. Writes to `opts.path` if given, else returns base64. Operator artefact — never enters the model context. |
 
 ### Tab management
 
@@ -117,13 +118,17 @@ interface ActionResult {
 }
 
 type ErrorCode =
-  | 'STALE_HANDLE' // handle no longer resolves with confidence ≥ threshold
+  | 'STALE_HANDLE' // handle no longer resolves to any element
+  | 'LOW_CONFIDENCE' // resolves, but below agent.confidenceThreshold — refused
   | 'ELEMENT_NOT_FOUND' // handle not present in current view
   | 'ELEMENT_DISABLED' // element is present but not interactable
   | 'NAVIGATION_FAILED' // open() or back()/forward() failed
   | 'TIMEOUT' // wait() or settle() exceeded timeout
   | 'BUDGET_EXCEEDED' // step or token budget exhausted
   | 'INVALID_URL' // open() received a non-http(s) URL
+  | 'INVALID_ACTION' // model output failed validation after all retries
+  | 'ROBOTS_DISALLOWED' // blocked by robots.txt (opt-in)
+  | 'PROMPT_INJECTION_DETECTED' // injection pattern masked in page content
   | 'UNKNOWN';
 ```
 
@@ -158,13 +163,18 @@ The compact view is the core of Sepia's token efficiency. It is a pure, determin
 
 **DOM fallback:** If the AX tree has fewer than 5 interactive nodes, the serializer falls back to DOM-inferred role/name for interactive elements before giving up.
 
-**Token budget (measured on 20-page corpus):**
+**Token budget.** Counts come from the real `cl100k_base` tokenizer (`tiktoken`), falling back to
+`characters / 4` only if the tokenizer cannot load.
 
-| Metric                     | Result                |
-| -------------------------- | --------------------- |
-| Median token count         | ≤ 900                 |
-| 95th-percentile            | ≤ 1,500               |
-| Interactive element recall | ≥ 95% of ground truth |
+The committed corpus is **5 synthetic fixtures**, not 20 pages:
+
+| Metric                     | CI gate | Actual on the corpus |
+| -------------------------- | ------- | -------------------- |
+| Median token count         | ≤ 900   | 80                   |
+| Max token count            | ≤ 1,500 | 111                  |
+| Interactive element recall | ≥ 95%   | passes               |
+
+The gates are regression guards with wide headroom, not a benchmark against real-world pages.
 
 ---
 
@@ -176,8 +186,10 @@ Handles (`[e12]`, `[e13]`, …) are derived from a semantic fingerprint, not DOM
 fingerprint = {
   role,
   accessible_name (lowercased),
-  stable_attrs    (id, name, data-testid, aria-label),
-  ordinal_among_same_role_siblings
+  stable_attrs    (id, name, data-testid, aria-label — optional; not populated
+                   by the bundled CDP path, available to callers supplying nodes),
+  ordinal_among_same_role_siblings,
+  ordinal_among_same_role_and_name_siblings   // what execution targets
 }
 ```
 

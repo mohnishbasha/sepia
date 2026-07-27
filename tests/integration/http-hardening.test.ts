@@ -140,19 +140,45 @@ describe('SR-11 — request body limit', () => {
 });
 
 describe('SR-11 — concurrency cap is not racy', () => {
-  it('never runs more than maxConcurrent agents at once', async () => {
+  it('never runs more than maxConcurrent agents simultaneously', async () => {
+    // Count agents actually in flight. Total completions may exceed the cap
+    // over the life of the test as slots free up; what must never happen is
+    // more than `maxConcurrent` running at the same instant.
+    let running = 0;
+    let peak = 0;
+
+    const { createAgent } = await import('../../agent/index.js');
+    vi.mocked(createAgent).mockReturnValue({
+      run: vi.fn().mockImplementation(async () => {
+        running++;
+        peak = Math.max(peak, running);
+        await new Promise((r) => setTimeout(r, 80));
+        running--;
+        return {
+          runId: 'r',
+          goal: 'g',
+          sessionId: 's',
+          startMs: 0,
+          endMs: 1,
+          outcome: 'success' as const,
+          totalSteps: 1,
+          totalTokens: 1,
+          steps: [],
+        };
+      }),
+    });
+
     const url = await listen({ maxConcurrent: 2 });
 
     const responses = await Promise.all(
-      Array.from({ length: 8 }, () =>
+      Array.from({ length: 12 }, () =>
         post(url, { goal: 'hi' }, { authorization: `Bearer ${KEY}` }),
       ),
     );
 
-    const accepted = responses.filter((r) => r.status === 200).length;
-    const rejected = responses.filter((r) => r.status === 503).length;
-
-    expect(accepted).toBeLessThanOrEqual(2);
-    expect(accepted + rejected).toBe(8);
+    expect(peak).toBeLessThanOrEqual(2);
+    // Every request is answered, either run or shed.
+    expect(responses.every((r) => r.status === 200 || r.status === 503)).toBe(true);
+    expect(responses).toHaveLength(12);
   }, 20000);
 });

@@ -9,6 +9,39 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Distinct elements no longer share a handle.** `assignHandle()` reused an existing handle whenever a fuzzy similarity score exceeded 0.85. Elements sharing a role and accessible name within ~4 ordinal positions collapsed together: 20 identical "Delete" buttons produced 5 handles, and handles were not stable across two observations of an unchanged page. Identity is now exact (role + accessible name + stable attributes + ordinal among identically-named same-role siblings). (AC-R6)
+- **Actions hit the element the handle denotes.** Every engine action resolved its target with `getByRole(role, {name}).first()`, so on a list of identically-labelled controls each handle acted on the first match regardless of which was requested. Execution now targets the handle's own ordinal. (AC-R7)
+- **`agent.confidenceThreshold` is enforced.** It was declared in config and read by nothing. `gateHandle()` now refuses to act below it, returning `LOW_CONFIDENCE`. (AC-AG6)
+- **A run can return an answer.** The `done` action's `summary` was parsed and discarded, so a run had no result. `RunTrace.answer` now carries it. (AC-AG5)
+- **Retries carry corrective feedback.** A model returning unparseable JSON was re-sent a byte-identical request. Retries now state what was wrong. (AC-AG8)
+- **The fingerprint profile is actually applied.** Nothing outside tests called `getPreset()` or `validateAndStart()`; sessions ran with stock settings and `navigator.webdriver === true`. The default preset also claimed Chrome 130 while the bundled browser was Chrome 149. (AC-F6)
+- **Page content is redacted before reaching the model.** `redactSecrets()` only ran on the model's own output to set a boolean flag. (AC-P5)
+- **HTTP server hardened.** `POST /run` merged a caller-supplied `config` straight into the run config, exposing `browser.executablePath` (launch an arbitrary local binary) and `model.endpoint` (redirect scraped content to an attacker). Auth was optional, the request body was read unbounded, and the concurrency check was separated from its increment by an `await`, so the cap could be exceeded. (SR-11)
+- **CSS selector injection.** The click fallback interpolated page-controlled accessible names into an attribute selector unescaped.
+- **`sepia mcp` exists.** The README documented it; the CLI only handled `run` and `serve`.
+- **Observation cost bounded.** `settle()` waited up to 8s for network-idle every observation; on a page that never goes idle three observations cost 24s, now ~3s. The CDP session is reused instead of reattached per call. (AC-R8)
+
+### Added
+
+- **`screenshot` action** across engine, action enum, SDK, and MCP. Writes a PNG to a path or returns base64; never enters the model context. (AC-A6)
+- **Real tokenizer.** `estimateTokens()` uses `cl100k_base` via `tiktoken` (promoted to a runtime dependency), falling back to `characters / 4` only if it cannot load. Counts run ~35% higher than the old estimate on realistic lines. (AC-S7)
+- **Action schema validation.** `parseAction()` validates required fields and field types instead of casting. (AC-A5)
+- **`stale_bail` outcome** is now produced when stale or low-confidence retries are exhausted. (AC-AG7)
+- **`pruneHandleMap()`** bounds the handle map on long single-origin sessions. (AC-R8)
+- **`--answer-only`** CLI flag; **`--allow-unauthenticated`** serve flag; `browser.settleTimeoutMs` config.
+- **Helm `serverAuth`** values for the now-mandatory HTTP bearer token.
+
+### Changed
+
+- **BREAKING — the HTTP server requires authentication.** It refuses to start unless `SEPIA_SERVER_API_KEY` is set or `--allow-unauthenticated` / `SEPIA_ALLOW_UNAUTHENTICATED=true` is passed. Helm deployments must set `serverAuth.existingSecret` or `serverAuth.allowUnauthenticated`.
+- **BREAKING — `startServer()` returns the `http.Server`** instead of `void`.
+- **BREAKING — `SepiaEngine` and `SepiaSession` gained `screenshot`**; custom implementations must add it.
+- **`HandleRecord` gained `lastSeenSeq`**, and `SemanticFingerprint` gained `ordinalAmongSameRoleAndName`.
+- Default `browser.profile` is now `chrome-149-linux-x86_64`, matching the bundled browser.
+- Documentation corrected against the code: the JA3/JA4 patch set is not in this repository, the corpus is 5 synthetic fixtures rather than 20 pages, `stableAttrs` are not populated by the default engine path, and there is no lint rule enforcing `sepia` casing.
+
 ### Added
 
 #### Security (SR-10)

@@ -6,6 +6,7 @@ import type { TypedAction } from '../actions/index.js';
 import {
   createAuditor,
   redactSecrets,
+  redactCompactView,
   sanitizeForLLM,
   createNamedProfile,
 } from '../privacy/index.js';
@@ -217,8 +218,9 @@ export function createAgent(config: SepiaConfig): SepiaAgent {
             break;
           }
 
-          // Format and sanitize page content before inserting into LLM context (SR-2)
-          const rawPageContent = formatCompactView(view);
+          // Strip secret values, then sanitize, before any page content enters
+          // the LLM context (AC-P5, SR-2).
+          const rawPageContent = formatCompactView(redactCompactView(view));
           const { sanitized: safePageContent, injectionDetected } = sanitizeForLLM(rawPageContent);
           const userContent = `Goal: ${goal}\n\nCurrent page:\n${safePageContent}`;
 
