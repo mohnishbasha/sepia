@@ -4,6 +4,7 @@
 import { createAgent } from '../agent/index.js';
 import { mergeConfig } from '../config/index.js';
 import { startServer } from '../interfaces/http/index.js';
+import { loadDotEnv } from './dotenv.js';
 
 function printUsage(): void {
   process.stderr.write(
@@ -46,6 +47,20 @@ async function runCommand(args: string[]): Promise<void> {
     endpoint ?? process.env['SEPIA_MODEL_ENDPOINT'] ?? 'https://api.anthropic.com/v1';
   const modelName = model ?? process.env['SEPIA_MODEL'] ?? 'claude-sonnet-4-6';
   const apiKey = process.env['SEPIA_API_KEY'];
+
+  // A remote endpoint with no key produces a run that fails on every step and,
+  // with --answer-only, prints nothing at all. Say so instead.
+  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])/.test(modelEndpoint);
+  if (apiKey === undefined && !isLocal) {
+    process.stderr.write(
+      `[sepia] no API key. Set SEPIA_API_KEY, or add a .env beside your project:\n` +
+        `           SEPIA_MODEL_ENDPOINT=${modelEndpoint}\n` +
+        `           SEPIA_MODEL=${modelName}\n` +
+        `           SEPIA_API_KEY=...\n` +
+        `         A local endpoint (localhost) needs no key.\n`,
+    );
+    process.exit(2);
+  }
   const robotsAwareness = process.env['SEPIA_ROBOTS_AWARENESS'] === 'true';
   const rateLimitMsRaw = process.env['SEPIA_RATE_LIMIT_MS'];
   const rateLimitMs = rateLimitMsRaw !== undefined ? Number(rateLimitMsRaw) : undefined;
@@ -142,6 +157,13 @@ async function mcpCommand(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // Installed globally, the CLI runs from directories that export nothing.
+  // Real environment variables still take precedence over the file.
+  const envFile = loadDotEnv();
+  if (envFile !== null && process.env['SEPIA_DEBUG_ENV'] === '1') {
+    process.stderr.write(`[sepia] loaded ${envFile}\n`);
+  }
+
   const args = process.argv.slice(2);
   const subcommand = args[0];
   const rest = args.slice(1);

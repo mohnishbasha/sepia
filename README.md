@@ -64,6 +64,44 @@ make dev
 
 Sepia has three runtime modes: CLI one-shot, HTTP server, and MCP stdio.
 
+### Two ways to invoke it
+
+**Working on Sepia** — go through `make run`. It runs the TypeScript directly via
+`tsx`, so it always reflects your current sources with no build step:
+
+```bash
+make run ARGS='run "What is the Node.js LTS version?"'
+```
+
+**Using Sepia as a tool** — put a real `sepia` command on your PATH:
+
+```bash
+make cli-link          # builds dist/ and links it globally
+sepia run "What is the Node.js LTS version?" --answer-only
+```
+
+`cli-link` points the command at _this working tree_, so it executes `dist/`, not
+your sources. After editing, run `make build` — or leave `make cli-watch` running,
+which recompiles on every change — otherwise you will silently run stale code.
+`make cli-unlink` removes it.
+
+### Configuration
+
+Every mode reads the same environment variables. The `sepia` binary also walks up
+from the working directory for a `.env`, so it works from anywhere:
+
+```bash
+# .env  (gitignored)
+SEPIA_MODEL_ENDPOINT=https://openrouter.ai/api/v1
+SEPIA_MODEL=deepseek/deepseek-v4-flash
+SEPIA_API_KEY=sk-or-v1-...
+```
+
+Real environment variables always win over the file. Any OpenAI-compatible
+endpoint works — Anthropic, OpenRouter, a local Ollama — since only the base URL
+and model name change. A local endpoint needs no key; a remote one without a key
+exits with an error rather than failing silently.
+
 ### CLI — one-shot agent run
 
 ```bash
