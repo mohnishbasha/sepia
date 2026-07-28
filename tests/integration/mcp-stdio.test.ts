@@ -17,15 +17,29 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { describe, it, expect, afterEach } from 'vitest';
 
-const CLI = new URL('../../cli/index.ts', import.meta.url).pathname;
+const ROOT = new URL('../..', import.meta.url).pathname;
+const CLI = `${ROOT}cli/index.ts`;
+const TSX = `${ROOT}node_modules/.bin/tsx`;
 
 let child: ChildProcessWithoutNullStreams | undefined;
+let stderr = '';
 
 function startServer(): ChildProcessWithoutNullStreams {
-  child = spawn('pnpm', ['tsx', CLI, 'mcp'], {
-    cwd: new URL('../..', import.meta.url).pathname,
-    env: { ...process.env, TMPDIR: `${new URL('../..', import.meta.url).pathname}/.tmp` },
+  // Run tsx directly rather than through `pnpm`: one less process to start, and
+  // no dependency on pnpm's workspace checks or on any TMPDIR the suite happens
+  // to be using. Inherit the environment untouched — overriding TMPDIR here
+  // pointed the child at a gitignored directory that does not exist on a fresh
+  // checkout, so it died before writing a byte.
+  child = spawn(TSX, [CLI, 'mcp'], {
+    cwd: ROOT,
     stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  stderr = '';
+  child.stderr.on('data', (c: Buffer) => {
+    stderr += c.toString();
+  });
+  child.on('error', (err) => {
+    stderr += `spawn error: ${err.message}\n`;
   });
   return child;
 }
@@ -95,7 +109,10 @@ describe('MCP-10 — stdout carries only JSON-RPC', () => {
 
     const { message, stdout } = await waitForMessage(proc, (m) => m['id'] === 1);
 
-    expect(message, `stdout was not clean JSON-RPC:\n${stdout}`).not.toBeNull();
+    expect(
+      message,
+      `stdout was not clean JSON-RPC.\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+    ).not.toBeNull();
     expect(message?.['jsonrpc']).toBe('2.0');
     expect((message?.['result'] as Record<string, unknown>)?.['serverInfo']).toBeDefined();
   }, 60_000);
@@ -123,7 +140,7 @@ describe('MCP-10 — stdout carries only JSON-RPC', () => {
       name: string;
     }>;
 
-    expect(tools.length, `stdout:\n${stdout}`).toBe(18);
+    expect(tools.length, `stdout:\n${stdout}\nstderr:\n${stderr}`).toBe(18);
     expect(tools.map((t) => t.name)).toContain('tabs_new');
   }, 60_000);
 });
@@ -165,7 +182,9 @@ describe('MCP-11 — shutdown releases the browser', () => {
     await waitForMessage(proc, (m) => m['id'] === 2);
 
     const browsers = childPids(proc.pid!);
-    expect(browsers.length, 'expected a browser child process').toBeGreaterThan(0);
+    expect(browsers.length, `expected a browser child process\nstderr:\n${stderr}`).toBeGreaterThan(
+      0,
+    );
 
     const exited = new Promise<number | null>((resolve) => proc.on('exit', (c) => resolve(c)));
 
