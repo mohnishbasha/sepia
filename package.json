@@ -54,7 +54,8 @@
     "@modelcontextprotocol/sdk": "1.29.0",
     "openai": "6.48.0",
     "playwright": "1.61.1",
-    "tiktoken": "1.0.22"
+    "tiktoken": "1.0.22",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/node": "26.1.1",

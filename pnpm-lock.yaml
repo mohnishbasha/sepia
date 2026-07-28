@@ -20,6 +20,9 @@ importers:
       tiktoken:
         specifier: 1.0.22
         version: 1.0.22
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 26.1.1

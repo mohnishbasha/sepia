@@ -143,17 +143,24 @@ function serveCommand(args: string[]): void {
 
 async function mcpCommand(): Promise<void> {
   const { startMcpServer } = await import('../interfaces/mcp/index.js');
-  const config = mergeConfig({
-    model: {
-      endpoint: process.env['SEPIA_MODEL_ENDPOINT'] ?? 'https://api.anthropic.com/v1',
-      model: process.env['SEPIA_MODEL'] ?? 'claude-sonnet-4-6',
-      maxTokensPerStep: 100_000,
-      ...(process.env['SEPIA_API_KEY'] !== undefined
-        ? { apiKey: process.env['SEPIA_API_KEY'] }
+
+  // No model configuration: in MCP mode the host does the reasoning, so Sepia
+  // needs no endpoint and no API key. Only browser settings apply.
+  const { browser, agent } = mergeConfig({});
+
+  await startMcpServer({
+    engine: {
+      headless: process.env['SEPIA_HEADLESS'] !== 'false',
+      profile: browser.profile,
+      confidenceThreshold: agent.confidenceThreshold,
+      ...(browser.settleTimeoutMs !== undefined
+        ? { settleTimeoutMs: browser.settleTimeoutMs }
+        : {}),
+      ...(process.env['SEPIA_BROWSER_PATH'] !== undefined
+        ? { executablePath: process.env['SEPIA_BROWSER_PATH'] }
         : {}),
     },
   });
-  await startMcpServer({ config });
 }
 
 async function main(): Promise<void> {
