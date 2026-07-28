@@ -197,13 +197,92 @@ curl http://localhost:3000/health
 
 ### MCP stdio
 
-For use as a tool server with Claude Desktop or any MCP 2024-11 host:
+Sepia as a browser for someone else's agent. The host — Claude Code, Codex, Claude
+Desktop — does the reasoning; Sepia only drives the browser.
+
+**This mode needs no model API key.** Nothing in the MCP server's import graph
+reaches the agent loop, so no endpoint, no key, and no model configuration apply.
+`SEPIA_MODEL_ENDPOINT` and `SEPIA_API_KEY` are ignored here.
 
 ```bash
-make run ARGS='mcp'
+sepia mcp          # after `make cli-link`
 ```
 
-Registers 13 tools: `open`, `observe`, `click`, `type`, `select`, `check`, `hover`, `scroll`, `press`, `read`, `screenshot`, `back`, `forward`.
+**Claude Code**
+
+```bash
+# personal, available in every project
+claude mcp add sepia -- sepia mcp
+
+# or shared with the repo — writes .mcp.json, commit it
+claude mcp add --scope project sepia -- sepia mcp
+```
+
+Flags go before the server name; everything after `--` is the command Claude Code
+runs. If you have not linked the binary, use the absolute path to the build
+instead: `-- node /path/to/sepia/dist/cli/index.js mcp`.
+
+**Codex**
+
+```bash
+codex mcp add sepia -- sepia mcp
+```
+
+Or in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.sepia]
+command = "sepia"
+args = ["mcp"]
+# Codex times a tool out after 60s by default. A cold browser launch plus a
+# navigation can exceed that, so raise it.
+tool_timeout_sec = 300
+```
+
+**Claude Desktop** — edit `~/Library/Application Support/Claude/claude_desktop_config.json`
+(macOS) by hand and restart the app. It does not inherit your `PATH`, so use
+absolute paths:
+
+```json
+{
+  "mcpServers": {
+    "sepia": {
+      "command": "/usr/local/bin/node",
+      "args": ["/absolute/path/to/sepia/dist/cli/index.js", "mcp"]
+    }
+  }
+}
+```
+
+**Tools** — 18, covering everything the engine can do:
+
+|          |                                                                |
+| -------- | -------------------------------------------------------------- |
+| Look     | `observe`, `read`, `screenshot`                                |
+| Navigate | `open`, `back`, `forward`, `wait`                              |
+| Interact | `click`, `type`, `select`, `check`, `press`, `hover`, `scroll` |
+| Tabs     | `tabs_list`, `tabs_new`, `tabs_switch`, `tabs_close`           |
+
+Each carries MCP annotations, so a host can tell `observe` (read-only) from
+`click` (potentially destructive) and gate the dangerous ones behind confirmation.
+`observe` also returns the page as structured data, not only as text.
+
+**Lifecycle** — the browser starts on the first tool call, not when the host
+connects, so registering Sepia and never using it costs nothing. It is released
+when the host disconnects, closes stdin, or signals the process.
+
+**Environment**
+
+| Variable               | Effect                                                           |
+| ---------------------- | ---------------------------------------------------------------- |
+| `SEPIA_HEADLESS=false` | Show the browser window — useful for watching what the host does |
+| `SEPIA_BROWSER_PATH`   | Use a specific Chromium binary                                   |
+
+**Known limitation.** Elements that share a role and accessible name are
+indistinguishable in the compact view: a list with six buttons all named
+"Delete", one of which is "Delete all", gives the host six handles and no way to
+tell which is which. Take a screenshot before a destructive action on repeated
+controls. Tracked as [#3](https://github.com/mohnishbasha/sepia/issues/3).
 
 ---
 

@@ -45,7 +45,7 @@ Three hard problems solved together:
 | Persona                        | Primary need                                                                |
 | ------------------------------ | --------------------------------------------------------------------------- |
 | **AI engineer**                | A reliable, token-efficient browser tool callable via TypeScript SDK or MCP |
-| **Framework author**           | A well-typed MCP 2024-11 server so any LLM can drive the browser            |
+| **Framework author**           | A well-typed MCP server so any host agent can drive the browser             |
 | **Privacy-conscious operator** | Local-model path; auditable data boundary; ephemeral profiles               |
 | **Security researcher**        | Replayable traces; deterministic core; isolated profiles                    |
 
@@ -372,9 +372,19 @@ HTTP status codes: `200` (success), `422` (budget_exceeded/error outcome), `503`
 
 ### MCP stdio
 
-`sepia mcp` starts an MCP 2024-11 stdio server. Registers 12 tools matching the action API: `open`, `observe`, `click`, `type`, `select`, `check`, `hover`, `scroll`, `press`, `read`, `back`, `forward`.
+`sepia mcp` starts an MCP stdio server, negotiating whatever protocol version the
+host requests (the SDK supports up to 2025-11-25). It registers 18 tools covering the
+whole engine surface: `observe`, `read`, `screenshot`, `open`, `back`, `forward`,
+`wait`, `click`, `type`, `select`, `check`, `press`, `hover`, `scroll`, and
+`tabs_list` / `tabs_new` / `tabs_switch` / `tabs_close`.
 
-Compatible with Claude Desktop and any MCP 2024-11 host.
+In this mode Sepia holds no model client and needs no API key — the host does the
+reasoning. Tools carry MCP annotations (`readOnlyHint`, `destructiveHint`) so a host
+can gate destructive actions, and `observe` returns structured output alongside its
+text rendering. The browser is launched on first use and released when the host
+disconnects.
+
+Compatible with Claude Code, Codex, Claude Desktop, and any MCP host. See the README for per-host setup.
 
 ### CLI
 
