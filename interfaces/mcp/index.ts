@@ -17,6 +17,7 @@ import { createRequire } from 'node:module';
 import { z } from 'zod';
 import { createEngine } from '../../engine/index.js';
 import type { EngineOptions, SepiaEngine } from '../../engine/index.js';
+import { redactCompactView } from '../../privacy/index.js';
 import type { CompactView } from '../../types/index.js';
 
 /**
@@ -189,11 +190,20 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
   async function getEngine(): Promise<SepiaEngine> {
     if (closed) throw new Error('server is closed');
     if (engine !== null) return engine;
-    // Concurrent first calls must share one launch, not race two browsers.
-    starting ??= createEngine(opts.engine ?? {}).then((e) => {
-      engine = e;
-      return e;
-    });
+    // Memoise the launch *promise* so concurrent first calls share one browser
+    // rather than racing two. A rejection must not stay memoised, though: a
+    // transient launch failure would otherwise poison every later call and the
+    // session would look healthy while being permanently dead.
+    starting ??= createEngine(opts.engine ?? {}).then(
+      (e) => {
+        engine = e;
+        return e;
+      },
+      (err: unknown) => {
+        starting = null;
+        throw err;
+      },
+    );
     return starting;
   }
 
@@ -205,7 +215,14 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
       const e = await getEngine();
       return await fn(e);
     } catch (err) {
-      return fail(`Sepia error: ${err instanceof Error ? err.message : String(err)}`);
+      // Detail goes to the operator, not the host: Playwright errors carry
+      // executable and cache paths, and the host is an untrusted-ish consumer
+      // that only needs to know the action did not happen.
+      process.stderr.write(`[sepia mcp] ${err instanceof Error ? err.stack : String(err)}\n`);
+      return fail(
+        'BROWSER_ERROR: the browser could not complete that action. ' +
+          'Retry, or call `observe` to re-read the page.',
+      );
     }
   }
 
@@ -245,7 +262,12 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
     },
     async ({ verbosity }) =>
       withEngine(async (e) => {
-        const view = await e.observe(verbosity !== undefined ? { verbosity } : {});
+        // The host is an LLM context like any other, so the same redaction the
+        // agent loop applies must apply here — otherwise MCP is the hole in the
+        // "secrets never enter LLM context" invariant.
+        const view = redactCompactView(
+          await e.observe(verbosity !== undefined ? { verbosity } : {}),
+        );
         return {
           content: [{ type: 'text', text: renderView(view) }],
           structuredContent: {

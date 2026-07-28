@@ -344,6 +344,93 @@ describe('MCP-7 — structured output', () => {
   });
 });
 
+// ── MCP-12 — a failed launch does not brick the session ──────────────────────
+
+describe('MCP-12 — launch failure recovery', () => {
+  it('reports a launch failure as a tool error', async () => {
+    const { createEngine } = await connect();
+    vi.mocked(createEngine).mockRejectedValueOnce(new Error('no browser'));
+
+    const res = await client.callTool({ name: 'observe', arguments: {} });
+
+    expect(res.isError).toBe(true);
+  });
+
+  it('retries on the next call instead of failing forever', async () => {
+    const { createEngine } = await connect();
+    vi.mocked(createEngine).mockRejectedValueOnce(new Error('transient launch failure'));
+
+    // Memoising the launch *promise* is what makes concurrent first calls share
+    // one browser — but a memoised rejection would poison every later call, so a
+    // transient failure must not be cached.
+    await client.callTool({ name: 'observe', arguments: {} });
+    const after = await client.callTool({ name: 'observe', arguments: {} });
+
+    expect(after.isError).toBeFalsy();
+  });
+});
+
+// ── MCP-13 — internals are not leaked to the host ────────────────────────────
+
+describe('MCP-13 — error messages', () => {
+  it('does not echo raw exception text to the host', async () => {
+    await connect();
+    vi.mocked(engine.observe).mockRejectedValue(
+      new Error(
+        "browserType.launch: Executable doesn't exist at /Users/someone/.cache/ms-playwright/x",
+      ),
+    );
+
+    const res = await client.callTool({ name: 'observe', arguments: {} });
+
+    expect(res.isError).toBe(true);
+    expect(JSON.stringify(res.content)).not.toContain('/Users/someone');
+  });
+});
+
+// ── MCP-14 — page secrets do not reach the host model ────────────────────────
+
+describe('MCP-14 — secret redaction', () => {
+  it('redacts secret field values from the observed page', async () => {
+    await connect();
+    vi.mocked(engine.observe).mockResolvedValue({
+      url: 'https://example.com/login',
+      title: 'Login',
+      verbosity: 'standard',
+      tokenCount: 20,
+      timestampMs: 0,
+      nodes: [
+        { handle: 'e1', role: 'textbox', name: 'Password', indent: 0, value: 'hunter2' },
+        { handle: 'e2', role: 'button', name: 'Sign in', indent: 0 },
+      ],
+    });
+
+    const res = await client.callTool({ name: 'observe', arguments: {} });
+
+    // The host is an LLM context like any other. The agent path redacts before
+    // the model sees a view; MCP must not be the hole in that invariant.
+    const payload = JSON.stringify(res.content) + JSON.stringify(res.structuredContent);
+    expect(payload).not.toContain('hunter2');
+    expect(payload).toContain('[REDACTED]');
+  });
+
+  it('leaves ordinary values intact', async () => {
+    await connect();
+    vi.mocked(engine.observe).mockResolvedValue({
+      url: 'https://example.com',
+      title: 'Form',
+      verbosity: 'standard',
+      tokenCount: 10,
+      timestampMs: 0,
+      nodes: [{ handle: 'e1', role: 'textbox', name: 'Email', indent: 0, value: 'a@b.com' }],
+    });
+
+    const res = await client.callTool({ name: 'observe', arguments: {} });
+
+    expect(JSON.stringify(res.structuredContent)).toContain('a@b.com');
+  });
+});
+
 // ── MCP-9 — screenshot does not hand the host a file-write primitive ─────────
 
 describe('MCP-9 — screenshot is capture-only over MCP', () => {
