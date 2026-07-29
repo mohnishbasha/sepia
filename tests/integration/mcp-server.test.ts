@@ -129,6 +129,7 @@ describe('MCP-2 — teardown', () => {
 describe('MCP-3 — tool surface', () => {
   const EXPECTED = [
     'back',
+    'batch',
     'check',
     'click',
     'forward',

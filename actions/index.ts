@@ -239,6 +239,117 @@ export function parseAction(raw: unknown): TypedAction {
 }
 
 /**
+ * Upper bound on steps in one batch.
+ *
+ * A plan comes from the model, so its length is untrusted input; the cap keeps a
+ * malformed or runaway reply from turning into an unbounded run of page actions.
+ * Well above any real form — the 10-field registration flow that motivated
+ * batching is 12 steps.
+ */
+export const MAX_BATCH_STEPS = 50;
+
+export interface BatchStepResult {
+  /** Index in the submitted plan, so a caller can say which step failed. */
+  step: number;
+  action: ActionName;
+  ok: boolean;
+  confidence?: number;
+  error?: ActionError;
+}
+
+export interface BatchResult {
+  /** True only when every step ran and succeeded. */
+  ok: boolean;
+  /** Steps that succeeded, in order, before any failure. */
+  completed: number;
+  results: BatchStepResult[];
+}
+
+/**
+ * Validate a whole plan before any of it runs (AC-A8).
+ *
+ * All-or-nothing on purpose: half-executing a plan and then rejecting step
+ * seven leaves the page in a state neither side predicted, which is worse than
+ * refusing the plan outright.
+ */
+export function parseBatch(raw: unknown): TypedAction[] {
+  if (!Array.isArray(raw)) {
+    throw new Error('Batch must be an array of actions');
+  }
+  if (raw.length === 0) {
+    throw new Error('Batch must contain at least one action');
+  }
+  if (raw.length > MAX_BATCH_STEPS) {
+    throw new Error(
+      `Batch has ${String(raw.length)} steps, over the limit of ${String(MAX_BATCH_STEPS)}`,
+    );
+  }
+
+  return raw.map((step, i) => {
+    try {
+      return parseAction(step);
+    } catch (err) {
+      throw new Error(
+        `Batch step ${String(i)}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  });
+}
+
+/**
+ * Run a decided plan against the engine, one model call for the whole plan.
+ *
+ * Every step still goes through the engine's own confidence gate, which
+ * re-observes and re-resolves the handle before touching the page. What batching
+ * removes is model round trips, not the checks they were paying for: a page that
+ * shifts mid-plan makes the affected step fail closed rather than act on the
+ * wrong element.
+ *
+ * Stops at the first failure by default. Continuing is friendlier for form fill
+ * and worse for anything destructive, so it is the caller's explicit choice.
+ */
+export async function dispatchBatch(
+  steps: TypedAction[],
+  engine: SepiaEngine,
+  opts?: { continueOnError?: boolean },
+): Promise<BatchResult> {
+  const results: BatchStepResult[] = [];
+  let completed = 0;
+  let failed = false;
+
+  for (const [i, step] of steps.entries()) {
+    let outcome: BatchStepResult;
+    try {
+      const raw = await dispatch(step, engine);
+      // Only action-shaped results carry ok/error; a read or observe simply
+      // succeeded by returning.
+      const asAction = raw as Partial<ActionResult>;
+      const ok = asAction.ok !== false;
+      outcome = { step: i, action: step.action, ok };
+      if (asAction.confidence !== undefined) outcome.confidence = asAction.confidence;
+      if (asAction.error !== undefined) outcome.error = asAction.error;
+    } catch (err) {
+      outcome = {
+        step: i,
+        action: step.action,
+        ok: false,
+        error: { code: 'UNKNOWN', message: err instanceof Error ? err.message : String(err) },
+      };
+    }
+
+    results.push(outcome);
+    if (outcome.ok) {
+      if (!failed) completed++;
+    } else {
+      failed = true;
+      if (opts?.continueOnError !== true) break;
+    }
+  }
+
+  return { ok: !failed, completed, results };
+}
+
+/**
  * Dispatch a typed action to the engine. Routes each action to the correct
  * engine method using a typed switch/dispatch table — never dynamic eval.
  */

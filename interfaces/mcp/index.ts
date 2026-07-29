@@ -17,6 +17,7 @@ import { createRequire } from 'node:module';
 import { z } from 'zod';
 import { createEngine } from '../../engine/index.js';
 import type { EngineOptions, SepiaEngine } from '../../engine/index.js';
+import { dispatchBatch, parseBatch, MAX_BATCH_STEPS } from '../../actions/index.js';
 import { redactCompactView } from '../../privacy/index.js';
 import type { CompactView } from '../../types/index.js';
 
@@ -356,6 +357,72 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
           return fail(`SCREENSHOT_FAILED: ${shot.error?.message ?? 'no image returned'}`);
         }
         return { content: [{ type: 'image', data: shot.base64, mimeType: 'image/png' }] };
+      }),
+  );
+
+  server.registerTool(
+    'batch',
+    {
+      title: 'Run several steps in one call',
+      description:
+        'Execute a plan of steps you have already decided, without a round trip per ' +
+        'step. Steps are the same actions as the individual tools, addressed by the ' +
+        'same handles. Every step is re-resolved against the live page before it runs, ' +
+        'so a page that shifts mid-plan fails on the affected step instead of acting on ' +
+        'the wrong element. Stops at the first failure unless continueOnError is set. ' +
+        HANDLE_RULES,
+      inputSchema: {
+        steps: z
+          .array(
+            z
+              .object({
+                action: z
+                  .string()
+                  .describe('click | type | select | check | hover | press | scroll | wait'),
+                handle: z.string().optional(),
+                text: z.string().optional(),
+                option: z.string().optional(),
+                checked: z.boolean().optional(),
+                key: z.string().optional(),
+                submit: z.boolean().optional(),
+                scrollTarget: z.string().optional(),
+                scrollDistance: z.number().optional(),
+              })
+              .passthrough(),
+          )
+          .min(1)
+          .max(MAX_BATCH_STEPS)
+          .describe('The plan, in order'),
+        continueOnError: z
+          .boolean()
+          .optional()
+          .describe('Run the remaining steps after a failure instead of stopping'),
+      },
+      annotations: WRITES,
+    },
+    async ({ steps, continueOnError }) =>
+      withEngine(async (e) => {
+        let plan;
+        try {
+          plan = parseBatch(steps);
+        } catch (err) {
+          return fail(err instanceof Error ? err.message : String(err));
+        }
+        const result = await dispatchBatch(
+          plan,
+          e,
+          continueOnError !== undefined ? { continueOnError } : {},
+        );
+        const lines = result.results.map(
+          (r) =>
+            `${String(r.step)}. ${r.action} — ${
+              r.ok ? 'ok' : `failed: ${r.error?.code ?? 'ERROR'} ${r.error?.message ?? ''}`
+            }`,
+        );
+        const summary = `${String(result.completed)}/${String(steps.length)} steps completed`;
+        return result.ok
+          ? ok([summary, ...lines].join('\n'))
+          : fail([summary, ...lines].join('\n'));
       }),
   );
 

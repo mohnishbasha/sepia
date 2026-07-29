@@ -50,7 +50,7 @@ actions/        → types, engine
 engine/         → types, serializer, resolver, fingerprint, security
 agent/          → types, config, serializer, actions, engine, privacy, telemetry
 training/       → agent (types only)
-interfaces/*    → agent, engine, config, types
+interfaces/*    → agent, actions, engine, config, types
 cli/            → agent, config, interfaces
 ```
 
