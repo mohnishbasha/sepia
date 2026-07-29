@@ -27,6 +27,8 @@ export interface AXSnapshot {
    * this join handle identity can only be positional.
    */
   attrs?: StableAttrs;
+  /** Frame this node's document belongs to; absent for the top-level document. */
+  frameId?: string;
   children?: AXSnapshot[];
 }
 
@@ -164,6 +166,8 @@ function walkAX(
     if (node.attrs !== undefined && Object.keys(node.attrs).length > 0) {
       compactNode.attrs = node.attrs;
     }
+
+    if (node.frameId !== undefined) compactNode.frameId = node.frameId;
 
     results.push(compactNode);
 

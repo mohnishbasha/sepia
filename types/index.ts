@@ -53,6 +53,13 @@ export interface CompactNode {
   state?: NodeState;
   indent: number;
   attrs?: StableAttrs;
+  /**
+   * The frame this element lives in, absent for the top-level document. Set by
+   * the engine and never shown to the model: it is what lets execution root a
+   * locator in the right frame, and what keeps two identically named buttons in
+   * different frames from sharing a handle.
+   */
+  frameId?: string;
   children?: CompactNode[];
 }
 

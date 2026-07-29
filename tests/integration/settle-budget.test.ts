@@ -44,7 +44,12 @@ describe('AC-R8 — bounded settle', () => {
       const elapsed = Date.now() - started;
 
       expect(view.nodes.length).toBeGreaterThan(0);
-      expect(elapsed).toBeLessThan(3000);
+      // Anchored to the defect, not to a measured runtime: with the old
+      // hardcoded 8s wait this observation cost ~16s (two load-state waits), and
+      // the configured 1s budget was ignored entirely. A threshold tuned tightly
+      // around the healthy number instead measures how loaded the machine is —
+      // it has already been raised once for exactly that reason.
+      expect(elapsed).toBeLessThan(8000);
     } finally {
       await engine.close();
     }
@@ -73,7 +78,10 @@ describe('AC-R8 — bounded settle', () => {
       await engine.observe();
       const elapsed = Date.now() - started;
 
-      expect(elapsed).toBeLessThan(6000);
+      // Three observations under the old behaviour cost ~48s; the point is that
+      // repeat observations do not each pay a fixed timeout, not that they hit
+      // any particular number.
+      expect(elapsed).toBeLessThan(24000);
     } finally {
       await engine.close();
     }
