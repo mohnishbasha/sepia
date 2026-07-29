@@ -29,7 +29,12 @@ import type {
   TextResult,
 } from '../types/index.js';
 import type { HandleMap } from '../resolver/index.js';
-import { createRateLimiter, createRobotsCache } from '../security/index.js';
+import {
+  createRateLimiter,
+  createRobotsCache,
+  hostnameOf,
+  isDomainAllowed,
+} from '../security/index.js';
 import type { RateLimiter, RobotsCache } from '../security/index.js';
 import { getPreset, validateAndStart } from '../fingerprint/index.js';
 
@@ -64,6 +69,11 @@ export interface EngineOptions {
   security?: {
     rateLimitMs?: number;
     robotsAwareness?: boolean;
+    /**
+     * Hostnames navigation is restricted to, matched exact-or-subdomain. Empty
+     * or absent means unrestricted (SR-13).
+     */
+    allowedDomains?: string[];
   };
 }
 
@@ -471,6 +481,35 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     `);
   }
 
+  const allowedDomains = opts?.security?.allowedDomains;
+
+  /**
+   * SR-13 — enforce the allowlist where every navigation passes, not only where
+   * `open()` does.
+   *
+   * A click on a link navigates without going near `open()`, and a link injected
+   * into page content is the attack the allowlist exists to stop. Blocking at the
+   * request layer covers redirects and script-driven navigation too.
+   *
+   * Scoped to main-frame document requests: blocking subresources would break
+   * any page loading a script or image from a CDN, which is not what an operator
+   * asks for by naming the sites the agent may visit. Installed only when an
+   * allowlist is configured, so unrestricted sessions pay no interception cost.
+   */
+  if (allowedDomains !== undefined && allowedDomains.length > 0) {
+    await context.route('**/*', async (route, request) => {
+      if (!request.isNavigationRequest() || request.frame().parentFrame() !== null) {
+        return route.continue();
+      }
+      const host = hostnameOf(request.url());
+      // about:blank and similar have no hostname and are not navigation off-site.
+      if (host === null || host === '') return route.continue();
+      return isDomainAllowed(host, allowedDomains)
+        ? route.continue()
+        : route.abort('blockedbyclient');
+    });
+  }
+
   const page: Page = await context.newPage();
 
   if (preset !== null) {
@@ -640,6 +679,22 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
           error: {
             code: 'INVALID_URL',
             message: `URL must start with http:// or https://. Got: ${url}`,
+          },
+        };
+      }
+
+      // SR-13: the allowlist, checked here so the caller gets a distinct code
+      // rather than a navigation failure. This is not the only enforcement
+      // point — see the route below, which catches navigations `open()` never
+      // sees, such as a click on an injected link.
+      const host = hostnameOf(url);
+      if (host === null || !isDomainAllowed(host, allowedDomains)) {
+        return {
+          ok: false,
+          confidence: 0,
+          error: {
+            code: 'DOMAIN_NOT_ALLOWED',
+            message: `Navigation to ${host ?? url} is outside security.allowedDomains`,
           },
         };
       }
