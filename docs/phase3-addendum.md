@@ -250,6 +250,7 @@ documentation. Every item below is test-first with a numbered AC.
 | AC-P5  | Secret field values are stripped from the view before it reaches the LLM  | `tests/data-boundary/view-redaction.test.ts`     |
 | AC-P6  | A credential is flagged by the field it went into, not only its shape     | `tests/data-boundary/secret-destination.test.ts` |
 | AC-P7  | A credential in the goal reaches neither the model nor the trace          | `tests/data-boundary/goal-secrets.test.ts`       |
+| AC-T1  | Switching tabs retargets every action; tab ids survive a close            | `tests/integration/tabs.test.ts`                 |
 | SR-11  | HTTP: allowlisted config, mandatory auth, body cap, non-racy concurrency  | `tests/integration/http-hardening.test.ts`       |
 | SR-13  | `security.allowedDomains` restricts navigation, including via links       | `tests/integration/allowed-domains.test.ts`      |
 
