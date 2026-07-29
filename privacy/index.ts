@@ -89,6 +89,103 @@ export function redactSecrets(text: string): RedactionResult {
 const SECRET_FIELD_NAME =
   /password|passcode|secret|token|api[\s_-]?key|cvv|cvc|card\s*number|social\s*security|ssn|pin\b/i;
 
+// ── Goal secrets (AC-P7) ─────────────────────────────────────────────────────
+
+/** Words that introduce a credential in a goal written by a person. */
+const CREDENTIAL_KEYWORD =
+  /\b(?:password|passcode|passphrase|secret|token|api[\s_-]?key|otp|pin|cvv|cvc)\b/gi;
+
+/**
+ * Does this token look like a credential value rather than an English word?
+ *
+ * The distinction that matters: `password hunter2` carries a secret, while
+ * `password reset link` does not, and redacting the second destroys the
+ * instruction the agent needs. Nothing about `hunter2` is secret-shaped in the
+ * usual sense — what marks it is being an opaque token where a value belongs:
+ * it carries a digit, a symbol, mixed case, or is simply not a word.
+ */
+function looksLikeCredentialValue(token: string): boolean {
+  if (token.length < 4) return false;
+  if (/^[a-z]+$/.test(token)) return false; // an ordinary lowercase word
+  if (/^[A-Z][a-z]+$/.test(token)) return false; // an ordinary capitalised word
+  return (
+    /[0-9]/.test(token) || /[^A-Za-z0-9]/.test(token) || /[a-z][A-Z]|[A-Z][a-z][A-Z]/.test(token)
+  );
+}
+
+/** A goal with its credentials lifted out, plus the map that puts them back. */
+export interface GoalSecrets {
+  /** Safe to send to a model and to persist. */
+  redacted: string;
+  /** Placeholder → literal. Never leaves the process. */
+  secrets: Map<string, string>;
+}
+
+/**
+ * Lift credentials out of a goal, leaving placeholders behind (AC-P7).
+ *
+ * Deleting them instead would make the task impossible — an agent told to sign
+ * in cannot type a password it was never given. Extracting keeps the goal
+ * actionable: the model sees `password {{sepia:secret:1}}`, echoes the
+ * placeholder back in its `type` action, and the literal is substituted inside
+ * the engine call, below the model boundary. Nothing that leaves the process —
+ * prompt, trace, log, exported training data — carries the secret.
+ *
+ * Deliberately conservative. A missed credential is a leak, but an over-eager
+ * match silently corrupts the instruction, and a goal mangled into nonsense is
+ * its own kind of failure. Only a token that follows a credential keyword *and*
+ * looks like a value is lifted.
+ */
+export function extractGoalSecrets(goal: string): GoalSecrets {
+  const secrets = new Map<string, string>();
+  let redacted = goal;
+  let n = 0;
+
+  for (const match of [...goal.matchAll(CREDENTIAL_KEYWORD)]) {
+    const after = goal.slice(match.index + match[0].length);
+    // Optional separator (":", "=", "is", "of", "the"), then the candidate.
+    const candidate = /^\s*(?::|=|\bis\b|\bof\b)?\s*["']?([^\s"']+)["']?/.exec(after);
+    const token = candidate?.[1];
+    if (token === undefined || !looksLikeCredentialValue(token)) continue;
+    if ([...secrets.values()].includes(token)) continue;
+
+    n++;
+    const placeholder = `{{sepia:secret:${String(n)}}}`;
+    secrets.set(placeholder, token);
+    redacted = redacted.split(token).join(placeholder);
+  }
+
+  return { redacted, secrets };
+}
+
+/** Substitute real values back into text the model produced. */
+export function applyGoalSecrets(text: string, secrets: Map<string, string>): string {
+  let result = text;
+  for (const [placeholder, literal] of secrets) {
+    result = result.split(placeholder).join(literal);
+  }
+  return result;
+}
+
+/** Does this text carry a secret placeholder? Used to mark the step in the trace. */
+export function containsGoalSecret(text: string, secrets: Map<string, string>): boolean {
+  for (const placeholder of secrets.keys()) {
+    if (text.includes(placeholder)) return true;
+  }
+  return false;
+}
+
+/**
+ * Does this accessible name mark a field whose value is a credential? (AC-P6)
+ *
+ * Exported because the destination — not the shape of the text — is what makes
+ * `hunter2` a secret. Anything deciding whether a credential passed through it
+ * needs to ask about the field, not the value (issue #10).
+ */
+export function isSecretFieldName(name: string): boolean {
+  return name !== '' && SECRET_FIELD_NAME.test(name);
+}
+
 /**
  * Strip secret values out of a compact view before it enters the LLM context.
  *
