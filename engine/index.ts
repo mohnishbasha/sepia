@@ -24,6 +24,7 @@ import type {
   TabInfo,
   WaitConditionType,
   ScreenshotResult,
+  StableAttrs,
 } from '../types/index.js';
 import type { HandleMap } from '../resolver/index.js';
 import { createRateLimiter, createRobotsCache } from '../security/index.js';
@@ -91,6 +92,7 @@ interface CDPAXProperty {
 }
 interface CDPAXNode {
   nodeId: string;
+  backendDOMNodeId?: number;
   parentId?: string;
   childIds?: string[];
   role?: CDPAXValue;
@@ -101,14 +103,73 @@ interface CDPAXNode {
   ignored?: boolean;
 }
 
+/** A DOM node as returned by `DOM.getDocument`. */
+interface CDPDOMNode {
+  backendNodeId?: number;
+  /** Flat [name, value, name, value, ...] pairs. */
+  attributes?: string[];
+  children?: CDPDOMNode[];
+  shadowRoots?: CDPDOMNode[];
+  contentDocument?: CDPDOMNode;
+}
+
+/** Attributes worth keeping: the ones that identify an element across changes. */
+function pickAttrs(flat: string[] | undefined): StableAttrs | undefined {
+  if (flat === undefined) return undefined;
+  const out: StableAttrs = {};
+  for (let i = 0; i + 1 < flat.length; i += 2) {
+    const name = flat[i];
+    const value = flat[i + 1];
+    if (value === undefined || value === '') continue;
+    if (name === 'id') out.id = value;
+    else if (name === 'name') out.name = value;
+    else if (name === 'data-testid' || name === 'data-test-id') out.dataTestId = value;
+    else if (name === 'aria-label') out.ariaLabel = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * Map every DOM node's `backendNodeId` to its identifying attributes.
+ *
+ * The accessibility tree carries semantics but no attributes, so this is the
+ * other half of the join that lets a handle survive a reorder rather than
+ * relying on position (issue #16). Walks shadow roots and iframe documents too,
+ * since `pierce` returns them inline.
+ */
+function collectAttrs(root: CDPDOMNode, into: Map<number, StableAttrs>): void {
+  const stack: CDPDOMNode[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === undefined) continue;
+    const attrs = pickAttrs(node.attributes);
+    if (attrs !== undefined && node.backendNodeId !== undefined) {
+      into.set(node.backendNodeId, attrs);
+    }
+    if (node.children) stack.push(...node.children);
+    if (node.shadowRoots) stack.push(...node.shadowRoots);
+    if (node.contentDocument) stack.push(node.contentDocument);
+  }
+}
+
 // Fetch the full AX tree via CDP and convert directly to AXSnapshot.
 // The caller owns the session lifetime — attaching and detaching per call cost
 // a round trip on every observation.
 async function getAXSnapshot(client: CDPSession): Promise<AXSnapshot | null> {
   {
-    const { nodes } = (await client.send('Accessibility.getFullAXTree')) as {
-      nodes: CDPAXNode[];
-    };
+    // Both trees in parallel: semantics from the AX tree, identity from the DOM.
+    const [axResult, domResult] = await Promise.all([
+      client.send('Accessibility.getFullAXTree') as Promise<{ nodes: CDPAXNode[] }>,
+      (
+        client.send('DOM.getDocument', { depth: -1, pierce: true }) as Promise<{
+          root: CDPDOMNode;
+        }>
+      ).catch(() => null),
+    ]);
+    const { nodes } = axResult;
+
+    const attrsByBackendId = new Map<number, StableAttrs>();
+    if (domResult !== null) collectAttrs(domResult.root, attrsByBackendId);
 
     const nodeMap = new Map<string, CDPAXNode>();
     for (const n of nodes) nodeMap.set(n.nodeId, n);
@@ -141,6 +202,12 @@ async function getAXSnapshot(client: CDPSession): Promise<AXSnapshot | null> {
 
       const rawDesc = node.description?.value;
       if (rawDesc !== undefined && rawDesc !== null) result.description = String(rawDesc);
+
+      const attrs =
+        node.backendDOMNodeId !== undefined
+          ? attrsByBackendId.get(node.backendDOMNodeId)
+          : undefined;
+      if (attrs !== undefined) result.attrs = attrs;
 
       for (const prop of node.properties ?? []) {
         const v = prop.value?.value;

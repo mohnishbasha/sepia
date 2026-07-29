@@ -1,5 +1,11 @@
 import { createRequire } from 'node:module';
-import type { Verbosity, CompactView, CompactNode, NodeState } from '../types/index.js';
+import type {
+  Verbosity,
+  CompactView,
+  CompactNode,
+  NodeState,
+  StableAttrs,
+} from '../types/index.js';
 
 // Re-export the shared types so callers can import from serializer/ or types/
 export type { Verbosity, CompactView, CompactNode, NodeState };
@@ -15,6 +21,12 @@ export interface AXSnapshot {
   required?: boolean;
   selected?: boolean;
   hidden?: boolean;
+  /**
+   * Identifying DOM attributes, joined in from `DOM.getDocument`. The
+   * accessibility tree alone does not carry `id` or `data-testid`, so without
+   * this join handle identity can only be positional.
+   */
+  attrs?: StableAttrs;
   children?: AXSnapshot[];
 }
 
@@ -148,6 +160,10 @@ function walkAX(
 
     const state = buildState(node);
     if (state !== undefined) compactNode.state = state;
+
+    if (node.attrs !== undefined && Object.keys(node.attrs).length > 0) {
+      compactNode.attrs = node.attrs;
+    }
 
     results.push(compactNode);
 
