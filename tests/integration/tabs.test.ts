@@ -25,8 +25,13 @@ let server: ReturnType<typeof createServer>;
 let baseUrl: string;
 
 beforeAll(async () => {
+  // The page name is chosen from a fixed set rather than echoed out of the
+  // request. Reflecting `req.url` into the response body is a reflected-XSS
+  // pattern even in a fixture, and CodeQL is right to say so.
+  const PAGES = ['FIRST', 'SECOND', 'THIRD'] as const;
+
   server = createServer((req, res) => {
-    const name = (req.url ?? '/').replace('/', '') || 'FIRST';
+    const name = PAGES.find((candidate) => req.url === `/${candidate}`) ?? 'FIRST';
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(
       `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${name}</title></head>` +
