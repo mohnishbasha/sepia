@@ -88,7 +88,8 @@ function formatNode(node: CompactNode, indent: number = 0): string {
         .join(', ')})`
     : '';
   const valueStr = node.value ? ` "${node.value}"` : '';
-  return `${prefix}${handleStr}${node.role} "${node.name}"${valueStr}${stateStr}`;
+  const contextStr = node.context ? ` (${node.context})` : '';
+  return `${prefix}${handleStr}${node.role} "${node.name}"${valueStr}${contextStr}${stateStr}`;
 }
 
 function formatCompactView(view: CompactView): string {

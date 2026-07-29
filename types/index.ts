@@ -53,6 +53,12 @@ export interface CompactNode {
   value?: string;
   state?: NodeState;
   indent: number;
+  /**
+   * Surrounding text that tells this control apart from others with the same
+   * role and name — a row label, a section heading, a toolbar name. Present
+   * only where the role+name alone is ambiguous.
+   */
+  context?: string;
   attrs?: StableAttrs;
   /**
    * The frame this element lives in, absent for the top-level document. Set by
