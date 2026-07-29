@@ -210,15 +210,14 @@ function walkAX(
     }
     // Else: skip entirely
   } else if (FULL_VERBOSITY_ROLES.has(role) && verbosity === 'full') {
-    // Full verbosity includes paragraph/text with non-empty names
+    // Emit the node only when it has a name, but ALWAYS descend. A <p> has no
+    // accessible name, so gating the recursion on the name dropped the element
+    // and every word inside it — which is why prose appeared at no verbosity
+    // at all (issue #27).
     if (name !== '') {
-      const compactNode: CompactNode = {
-        role,
-        name,
-        indent: depth,
-      };
-      results.push(compactNode);
-
+      results.push({ role, name, indent: depth });
+    }
+    {
       if (node.children) {
         for (const child of node.children) {
           const childNodes = walkAX(child, depth + 1, counter, verbosity);
@@ -238,13 +237,14 @@ function walkAX(
         }
       }
     } else if (name !== '' && verbosity === 'full') {
-      // In full verbosity, include named nodes
-      const compactNode: CompactNode = {
-        role,
-        name,
-        indent: depth,
-      };
-      results.push(compactNode);
+      // Same trap as the paragraph branch: emitting a named container without
+      // descending silently drops everything inside it. Emit, then descend.
+      results.push({ role, name, indent: depth });
+      if (node.children) {
+        for (const child of node.children) {
+          results.push(...walkAX(child, depth + 1, counter, verbosity));
+        }
+      }
     } else if (node.children) {
       // Descend regardless
       for (const child of node.children) {

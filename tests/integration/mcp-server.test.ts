@@ -144,6 +144,7 @@ describe('MCP-3 — tool surface', () => {
     'tabs_list',
     'tabs_new',
     'tabs_switch',
+    'text',
     'type',
     'wait',
   ].sort();

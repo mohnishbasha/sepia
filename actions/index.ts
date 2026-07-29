@@ -8,6 +8,7 @@ import type {
   TabInfo,
   CompactView,
   ScreenshotResult,
+  TextResult,
 } from '../types/index.js';
 import type { SepiaEngine } from '../engine/index.js';
 
@@ -20,6 +21,7 @@ export type {
   WaitResult,
   TabInfo,
   ScreenshotResult,
+  TextResult,
 };
 
 export type ActionName =
@@ -31,6 +33,7 @@ export type ActionName =
   | 'scroll'
   | 'press'
   | 'read'
+  | 'text'
   | 'screenshot'
   | 'observe'
   | 'wait'
@@ -51,6 +54,7 @@ export const ACTION_NAMES: Set<ActionName> = new Set([
   'scroll',
   'press',
   'read',
+  'text',
   'screenshot',
   'observe',
   'wait',
@@ -80,6 +84,7 @@ export interface TypedAction {
   url?: string;
   path?: string;
   fullPage?: boolean;
+  maxChars?: number;
   condition?: WaitConditionType;
   timeoutMs?: number;
   tabId?: string;
@@ -175,6 +180,10 @@ export function parseAction(raw: unknown): TypedAction {
     case 'check':
       requireString(obj, 'handle', action);
       optionalBoolean(obj, 'checked', action);
+      break;
+
+    case 'text':
+      optionalNumber(obj, 'maxChars', action);
       break;
 
     case 'screenshot':
@@ -281,6 +290,12 @@ export async function dispatch(
     case 'read': {
       if (!action.handle) throw new Error('read requires handle');
       return engine.read(action.handle);
+    }
+
+    case 'text': {
+      const textOpts: { maxChars?: number } = {};
+      if (action.maxChars !== undefined) textOpts.maxChars = action.maxChars;
+      return engine.text(textOpts);
     }
 
     case 'screenshot': {

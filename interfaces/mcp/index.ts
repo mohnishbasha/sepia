@@ -306,6 +306,35 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
   );
 
   server.registerTool(
+    'text',
+    {
+      title: 'Read the page prose',
+      description:
+        'Return the visible body text of the current page. The outline from `observe` ' +
+        'lists controls and headings, not article text — use this when you need what ' +
+        'the page actually says. Long pages are truncated and say so.',
+      inputSchema: {
+        maxChars: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe('Character cap on the returned text (default 20000)'),
+      },
+      annotations: READS,
+    },
+    async ({ maxChars }) =>
+      withEngine(async (e) => {
+        const opts: { maxChars?: number } = {};
+        if (maxChars !== undefined) opts.maxChars = maxChars;
+        const r = await e.text(opts);
+        if (!r.ok) return fail(`${r.error?.code ?? 'ERROR'}: ${r.error?.message ?? ''}`);
+        const body = r.text ?? '';
+        return ok(r.truncated === true ? `${body}\n\n[truncated at ${body.length} chars]` : body);
+      }),
+  );
+
+  server.registerTool(
     'screenshot',
     {
       title: 'Screenshot the page',

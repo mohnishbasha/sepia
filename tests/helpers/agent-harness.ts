@@ -36,6 +36,7 @@ export function makeMockEngine(overrides: Partial<SepiaEngine> = {}): SepiaEngin
     scroll: vi.fn().mockResolvedValue(okResult()),
     press: vi.fn().mockResolvedValue(okResult()),
     read: vi.fn().mockResolvedValue({ ok: true, text: '' }),
+    text: vi.fn().mockResolvedValue({ ok: true, text: 'page text', truncated: false }),
     screenshot: vi.fn().mockResolvedValue({ ok: true, path: '/tmp/shot.png' }),
     wait: vi.fn().mockResolvedValue({ ok: true, timedOut: false }),
     back: vi.fn().mockResolvedValue(okResult()),
