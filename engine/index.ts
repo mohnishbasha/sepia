@@ -495,6 +495,13 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
    * any page loading a script or image from a CDN, which is not what an operator
    * asks for by naming the sites the agent may visit. Installed only when an
    * allowlist is configured, so unrestricted sessions pay no interception cost.
+   *
+   * That scoping has a consequence worth stating plainly. Child frames are not
+   * blocked, and their accessibility trees are merged into the view (#11), so
+   * content from a domain outside the allowlist can still reach the model when an
+   * allowed page embeds it. Blocking embeds instead would break the payment
+   * fields and editors that merging exists to reach. The allowlist bounds where
+   * the agent *navigates*, not what an allowed page is allowed to contain.
    */
   if (allowedDomains !== undefined && allowedDomains.length > 0) {
     await context.route('**/*', async (route, request) => {
