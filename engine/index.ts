@@ -422,6 +422,29 @@ async function mergeFrames(
 /** Default cap on `text()`, chosen to stay well inside host output limits. */
 const DEFAULT_TEXT_CHARS = 20_000;
 
+/**
+ * Sepia drives a real Chromium and does not bundle one.
+ *
+ * Installing from a registry does not fetch a browser, so this is the first
+ * thing a new consumer hits. The message deliberately carries no path: callers
+ * that must not echo raw exception text can surface this verbatim instead of
+ * collapsing it into a generic failure the operator cannot act on.
+ */
+export const MISSING_BROWSER_MESSAGE =
+  'NO_BROWSER: Sepia drives a real Chromium and does not bundle one. ' +
+  'Install it with `npx playwright install chromium` (or ' +
+  '`pnpm exec playwright install chromium` in a pnpm project), then retry.';
+
+/** Is this failure the browser being absent, rather than something going wrong? */
+export function isMissingBrowserError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    /Executable doesn'?t exist/i.test(message) ||
+    /please run the following command to download new browsers/i.test(message) ||
+    /playwright install/i.test(message)
+  );
+}
+
 export function cssQuote(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }

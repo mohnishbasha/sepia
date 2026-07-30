@@ -15,7 +15,11 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createRequire } from 'node:module';
 import { z } from 'zod';
-import { createEngine } from '../../engine/index.js';
+import {
+  createEngine,
+  isMissingBrowserError,
+  MISSING_BROWSER_MESSAGE,
+} from '../../engine/index.js';
 import type { EngineOptions, SepiaEngine } from '../../engine/index.js';
 import { dispatchBatch, parseBatch, MAX_BATCH_STEPS } from '../../actions/index.js';
 import { redactCompactView } from '../../privacy/index.js';
@@ -32,8 +36,17 @@ function packageVersion(): string {
   const require = createRequire(import.meta.url);
   for (const path of ['../../package.json', '../../../package.json']) {
     try {
-      const pkg = require(path) as { name?: string; version?: string };
-      if (pkg.name === 'sepia' && typeof pkg.version === 'string') return pkg.version;
+      const pkg = require(path) as {
+        version?: string;
+        bin?: Record<string, string>;
+      };
+      // Identified by shape, not by name. This used to require `name === 'sepia'`,
+      // and renaming the package to `sepia-browser` — because plain `sepia` is
+      // taken on npm — made every candidate fail silently and the server report
+      // 0.0.0. A structural check survives the next rename too.
+      if (typeof pkg.version === 'string' && pkg.bin?.['sepia'] !== undefined) {
+        return pkg.version;
+      }
     } catch {
       // try the next candidate
     }
@@ -221,6 +234,11 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
       // executable and cache paths, and the host is an untrusted-ish consumer
       // that only needs to know the action did not happen.
       process.stderr.write(`[sepia mcp] ${err instanceof Error ? err.stack : String(err)}\n`);
+      // One exception to the generic reply: a browser that was never installed
+      // is not a transient fault and no amount of retrying fixes it. The
+      // purpose-written message says what to run and carries no path, so it
+      // satisfies both requirements at once (MCP-15).
+      if (isMissingBrowserError(err)) return fail(MISSING_BROWSER_MESSAGE);
       return fail(
         'BROWSER_ERROR: the browser could not complete that action. ' +
           'Retry, or call `observe` to re-read the page.',

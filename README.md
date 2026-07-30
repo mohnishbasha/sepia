@@ -208,6 +208,29 @@ reaches the agent loop, so no endpoint, no key, and no model configuration apply
 sepia mcp          # after `make cli-link`
 ```
 
+**Installing from a registry**
+
+Once published, a host can use the package directly without cloning:
+
+```bash
+npm install -g sepia-browser
+sepia mcp
+```
+
+The package is `sepia-browser` because plain `sepia` on npm is taken by an
+unrelated module from 2013. The **command** is still `sepia` — `bin` is
+independent of the package name, so nothing about using it changes.
+
+Sepia drives a real Chromium and does not bundle one, and installing the package
+does not fetch it. Run this once:
+
+```bash
+npx playwright install chromium
+```
+
+Skipping it is not silent — the first tool call returns `NO_BROWSER` naming that
+exact command, rather than a generic failure.
+
 **Claude Code**
 
 ```bash
@@ -285,6 +308,55 @@ tell which is which. Take a screenshot before a destructive action on repeated
 controls. Tracked as [#3](https://github.com/mohnishbasha/sepia/issues/3).
 
 ---
+
+## Releasing
+
+Publishing happens only when a maintainer publishes a GitHub Release — the same
+flow as `smallcase-mcp` to PyPI. Merging a pull request never publishes.
+
+**There is no publish token in this repository.** Authentication is OIDC trusted
+publishing: npm trusts this workflow, in this repository, running in the `npm`
+environment, and hands it a short-lived credential scoped to one package and one
+run. A leaked repository secret is not a failure mode if the secret does not
+exist.
+
+To release:
+
+1. Bump `version` in `package.json` (its own PR, so the release has a reviewable
+   commit).
+2. Optionally run Actions → **Publish** manually first. A manual run performs every
+   check — build, tarball verification, and a smoke test of the packed MCP server —
+   and stops before publishing. It cannot ship anything.
+3. Create a GitHub Release tagged `vX.Y.Z`. That publishes.
+
+The run refuses if the tag does not match `package.json`, or if that version is
+already on the registry.
+
+### One-time setup
+
+Publish the first version, or reserve the name, from an account you control —
+then on npmjs.com → package → Settings → Trusted publishers, add:
+
+| Field             | Value          |
+| ----------------- | -------------- |
+| Organization/user | `mohnishbasha` |
+| Repository        | `sepia`        |
+| Workflow filename | `publish.yml`  |
+| Environment       | `npm`          |
+| Allowed actions   | `npm publish`  |
+
+Then create a GitHub environment named `npm` and restrict it to `v*` tags — that
+protection is the real gate, since the trusted publisher is bound to it.
+
+Requirements, for when something fails confusingly: npm ≥ 11.5.1 and Node ≥
+22.14.0 (the workflow upgrades npm itself and asserts the version), and
+`repository.url` in `package.json` must match the GitHub repository exactly. npm
+does not validate the trusted-publisher config when you save it — mistakes only
+surface as an auth error during a publish.
+
+Publishing to a **private registry** instead would need a token and a registry
+URL; OIDC trusted publishing is an npmjs and PyPI feature, not something a
+self-hosted registry provides.
 
 ## Deploy
 

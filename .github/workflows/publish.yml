@@ -1,0 +1,207 @@
+name: Publish
+
+# Publishing happens ONLY when a maintainer publishes a GitHub Release, matching
+# how smallcase-mcp releases to PyPI. Merging a pull request never publishes.
+#
+# Authentication is OIDC trusted publishing — there is no NPM_TOKEN and no
+# long-lived secret anywhere in this repository. npm trusts this specific
+# workflow, in this specific repository, running in this specific environment,
+# and hands it a short-lived credential scoped to one package and one run. A
+# leaked repo secret is not a failure mode if the secret does not exist.
+#
+# `workflow_dispatch` exists only to rehearse the pipeline: it runs every check
+# and stops before publishing, so it cannot ship anything by accident.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '24.18.0'
+  PNPM_VERSION: '9.12.3'
+
+jobs:
+  publish:
+    name: Publish to npm (trusted publishing)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Protected environment restricted to the tags you allow — the real gate, and
+    # the environment name npm's trusted publisher config is bound to.
+    environment:
+      name: npm
+
+    permissions:
+      contents: read
+      id-token: write # OIDC token for trusted publishing — NO API token stored anywhere
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@008330803749db0355799c700092d9a85fd074e9 # v6.0.9
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      # Deliberately no `registry-url`: setup-node writes an empty `_authToken`
+      # line into .npmrc when it is set, and that breaks OIDC with ENEEDAUTH or a
+      # confusing E404. Trusted publishing wants no auth configuration at all.
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # Trusted publishing needs npm >= 11.5.1. The npm bundled with Node is
+      # often older, and the failure mode is an auth error that reads like a
+      # misconfigured publisher rather than an out-of-date client.
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm install -g npm@latest
+          echo "npm $(npm -v) / node $(node -v)"
+          NPM_V="$(npm -v)" node -e '
+            const [maj, min, patch] = process.env.NPM_V.split(".").map(Number);
+            const ok = maj > 11 || (maj === 11 && (min > 5 || (min === 5 && patch >= 1)));
+            if (!ok) {
+              console.error(`::error::npm ${process.env.NPM_V} is too old for trusted publishing (need >= 11.5.1)`);
+              process.exit(1);
+            }
+          '
+
+      - name: Read package identity
+        id: pkg
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tarball=$(echo "$name" | sed 's|^@||; s|/|-|')-${version}.tgz" >> "$GITHUB_OUTPUT"
+          echo "$name@$version"
+
+      # A release tagged v0.3.0 that ships package.json 0.2.0 is worth catching
+      # here rather than discovering in the registry afterwards.
+      - name: Release tag must match the package version
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          if [ "$TAG" != "v$VERSION" ] && [ "$TAG" != "$VERSION" ]; then
+            echo "::error::release tag $TAG does not match package.json version $VERSION"
+            exit 1
+          fi
+          echo "Tag $TAG matches version $VERSION."
+
+      # Fail before building rather than after: a version that already exists is
+      # a mistake in the request, and the operator should hear it immediately.
+      - name: Refuse to republish an existing version
+        env:
+          NAME: ${{ steps.pkg.outputs.name }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::$NAME@$VERSION is already published. Bump the version in package.json first."
+            exit 1
+          fi
+          echo "$NAME@$VERSION is not yet published — proceeding."
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The full gate again, on the exact commit being released. CI already ran
+      # it on master, but a release can point at any commit, and the tarball is
+      # what consumers actually get — this is the last place to find out.
+      - name: Lint
+        run: pnpm eslint .
+
+      - name: Typecheck
+        run: pnpm tsc --noEmit
+
+      - name: Install Chromium for the test suite
+        run: pnpm exec playwright install --only-shell --with-deps chromium
+
+      - name: Test
+        run: pnpm vitest run
+
+      - name: Build
+        run: pnpm tsc -p tsconfig.build.json && chmod +x dist/cli/index.js
+
+      - name: Pack
+        run: pnpm pack
+
+      # A tarball missing dist/, or carrying the test suite and fixtures, is a
+      # broken release that still publishes successfully.
+      - name: Verify tarball contents
+        env:
+          TARBALL: ${{ steps.pkg.outputs.tarball }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          echo "Inspecting $TARBALL"
+          tar -tzf "$TARBALL" | sort > /tmp/contents.txt
+          sed 's/^/  /' /tmp/contents.txt | head -40
+
+          for required in package/dist/cli/index.js package/dist/interfaces/mcp/index.js \
+                          package/dist/interfaces/sdk/index.js package/README.md; do
+            grep -qx "$required" /tmp/contents.txt || {
+              echo "::error::$required missing from the tarball"; exit 1; }
+          done
+
+          if grep -qE '^package/(tests|fixtures|helm|\.github)/' /tmp/contents.txt; then
+            echo "::error::tarball carries files that should not ship — check the files field"
+            exit 1
+          fi
+
+          echo "Tarball for $VERSION looks well formed."
+
+      # A published package whose entry point does not start is the failure this
+      # catches. The tarball is installed into a clean directory and driven over
+      # real stdio JSON-RPC — see scripts/smoke-mcp.mjs for why a driver rather
+      # than a shell pipe.
+      - name: Smoke test the packed artifact
+        env:
+          TARBALL: ${{ steps.pkg.outputs.tarball }}
+        run: |
+          mkdir -p /tmp/smoke && cd /tmp/smoke
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund "$GITHUB_WORKSPACE/$TARBALL" >/dev/null
+          node "$GITHUB_WORKSPACE/scripts/smoke-mcp.mjs" /tmp/smoke/node_modules/.bin/sepia
+
+      # Only a published Release publishes. A manual run always stops here.
+      - name: Publish
+        if: github.event_name == 'release'
+        env:
+          TARBALL: ${{ steps.pkg.outputs.tarball }}
+        run: |
+          # No .npmrc and no token: npm exchanges the OIDC token itself.
+          # `--access public` is required for a scoped package, which otherwise
+          # defaults to restricted. Provenance is attached automatically for a
+          # public package in a public repository.
+          npm publish "$TARBALL" --access public
+
+      - name: Summary
+        if: always()
+        env:
+          NAME: ${{ steps.pkg.outputs.name }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          {
+            if [ "${{ github.event_name }}" = "release" ]; then
+              echo "### Published \`$NAME@$VERSION\`"
+              echo
+              echo "- release: ${{ github.event.release.tag_name }}"
+              echo "- auth: OIDC trusted publishing (no stored token)"
+            else
+              echo "### Rehearsal — nothing was published"
+              echo
+              echo "\`$NAME@$VERSION\` was built, packed, verified and smoke tested."
+              echo "Publish by creating a GitHub Release tagged \`v$VERSION\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

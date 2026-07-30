@@ -390,6 +390,51 @@ describe('MCP-13 — error messages', () => {
   });
 });
 
+// ── MCP-15 — a missing browser says what to do about it ──────────────────────
+
+describe('MCP-15 — missing browser', () => {
+  // Sepia drives a real Chromium and does not bundle one. Installing the package
+  // from a registry does not fetch it, so this is the first thing a new host
+  // hits — and MCP-13 suppresses the raw Playwright text because it carries a
+  // filesystem path. The result was a generic failure with no hint, which reads
+  // as "this server is broken" rather than "run one command".
+  const LAUNCH_FAILURE = new Error(
+    "browserType.launch: Executable doesn't exist at " +
+      '/Users/someone/.cache/ms-playwright/chromium-1234/chrome-mac/Chromium\n' +
+      'Looks like Playwright was just installed or updated.',
+  );
+
+  it('names the command that fixes it', async () => {
+    const { createEngine } = await connect();
+    vi.mocked(createEngine).mockRejectedValueOnce(LAUNCH_FAILURE);
+
+    const res = await client.callTool({ name: 'observe', arguments: {} });
+
+    expect(res.isError).toBe(true);
+    expect(JSON.stringify(res.content)).toContain('playwright install');
+  });
+
+  it('still does not leak the path from the underlying error', async () => {
+    const { createEngine } = await connect();
+    vi.mocked(createEngine).mockRejectedValueOnce(LAUNCH_FAILURE);
+
+    const res = await client.callTool({ name: 'observe', arguments: {} });
+
+    expect(JSON.stringify(res.content)).not.toContain('/Users/someone');
+  });
+
+  it('leaves an unrelated failure generic', async () => {
+    const { createEngine } = await connect();
+    vi.mocked(createEngine).mockRejectedValueOnce(new Error('EACCES /etc/shadow'));
+
+    const res = await client.callTool({ name: 'observe', arguments: {} });
+
+    expect(res.isError).toBe(true);
+    expect(JSON.stringify(res.content)).not.toContain('/etc/shadow');
+    expect(JSON.stringify(res.content)).not.toContain('playwright install');
+  });
+});
+
 // ── MCP-14 — page secrets do not reach the host model ────────────────────────
 
 describe('MCP-14 — secret redaction', () => {

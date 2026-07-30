@@ -1,5 +1,5 @@
 {
-  "name": "sepia",
+  "name": "sepia-browser",
   "version": "0.2.0",
   "description": "An open-source secure AI browser engine",
   "type": "module",
@@ -48,7 +48,8 @@
     "test:example": "vitest run tests/example",
     "dev": "tsx watch cli/index.ts",
     "security:audit": "pnpm audit --audit-level=critical",
-    "prepare": "husky"
+    "prepare": "husky",
+    "prepublishOnly": "pnpm tsc -p tsconfig.build.json && chmod +x dist/cli/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
@@ -82,5 +83,29 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
-  }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "soul.md",
+    "SKILLS.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mohnishbasha/sepia.git"
+  },
+  "homepage": "https://github.com/mohnishbasha/sepia#readme",
+  "bugs": {
+    "url": "https://github.com/mohnishbasha/sepia/issues"
+  },
+  "keywords": [
+    "mcp",
+    "browser",
+    "accessibility-tree",
+    "agent",
+    "playwright",
+    "llm",
+    "automation"
+  ]
 }
