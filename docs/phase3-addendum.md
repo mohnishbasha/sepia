@@ -240,8 +240,10 @@ documentation. Every item below is test-first with a numbered AC.
 | AC-R6  | N identically-named same-role elements get N distinct handles             | `tests/integration/list-handles.test.ts`     |
 | AC-R7  | Acting on a handle hits that element, not the first role+name match       | `tests/integration/list-handles.test.ts`     |
 | AC-R8  | Bounded settle on never-idle pages; handle map is pruned                  | `tests/integration/settle-budget.test.ts`    |
+| AC-R10 | A handle from a frame acts inside that frame, with per-frame ordinals     | `tests/integration/iframes.test.ts`          |
 | AC-R9  | Handle identity uses real DOM attributes joined from `DOM.getDocument`    | `tests/integration/stable-attrs.test.ts`     |
 | AC-S7  | Token counts come from `cl100k_base`, not `characters / 4`                | `tests/token-budget/tokenizer.test.ts`       |
+| AC-S10 | Child-frame accessibility trees are merged into the view                  | `tests/integration/iframes.test.ts`          |
 | AC-S9  | `full` verbosity descends into unnamed containers and emits prose         | `tests/integration/page-text.test.ts`        |
 | AC-F6  | The configured preset is applied and validated before a session is used   | `tests/fingerprint/engine-profile.test.ts`   |
 | AC-P5  | Secret field values are stripped from the view before it reaches the LLM  | `tests/data-boundary/view-redaction.test.ts` |

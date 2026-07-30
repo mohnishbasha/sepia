@@ -4,6 +4,7 @@ import {
   type Browser,
   type BrowserContext,
   type CDPSession,
+  type Frame,
   type Page,
 } from 'playwright';
 import { serialize } from '../serializer/index.js';
@@ -162,10 +163,57 @@ function collectAttrs(root: CDPDOMNode, into: Map<number, StableAttrs>): void {
   }
 }
 
+/** A frame as returned by `Page.getFrameTree`. */
+interface CDPFrameTree {
+  frame: { id: string; url: string };
+  childFrames?: CDPFrameTree[];
+}
+
+/**
+ * Flatten a CDP frame tree in document order, root first.
+ *
+ * Playwright's `page.frames()` is breadth-first, so the two orderings disagree
+ * once a frame nests. Both trees are walked depth-first here and in
+ * `dfsFrames()` so the pairing between a CDP frame id and a Playwright `Frame`
+ * is positional in the same sense on both sides.
+ */
+function dfsFrameTree(node: CDPFrameTree): { id: string; url: string }[] {
+  return [
+    { id: node.frame.id, url: node.frame.url },
+    ...(node.childFrames ?? []).flatMap(dfsFrameTree),
+  ];
+}
+
+/** Flatten Playwright's frame tree in the same depth-first order. */
+function dfsFrames(frame: Frame): Frame[] {
+  return [frame, ...frame.childFrames().flatMap(dfsFrames)];
+}
+
+/**
+ * Bounds on frame merging.
+ *
+ * Ad-heavy pages carry dozens of tracking iframes — one measured page had 61
+ * frames, of which the content frame was 40th. Capping by frame count in
+ * document order therefore truncates exactly the wrong end, and it buys nothing:
+ * reading all 61 took 22 ms, because these are pipe-local protocol calls issued
+ * in parallel. So the frame cap is only a runaway guard, and what is actually
+ * rationed is the number of nodes those frames may contribute to the view.
+ */
+const MAX_FRAMES = 64;
+const MAX_FRAME_NODES = 2000;
+
+/** Size of a converted subtree, for spending against the node budget. */
+function countNodes(node: AXSnapshot): number {
+  return 1 + (node.children ?? []).reduce((sum, c) => sum + countNodes(c), 0);
+}
+
 // Fetch the full AX tree via CDP and convert directly to AXSnapshot.
 // The caller owns the session lifetime — attaching and detaching per call cost
 // a round trip on every observation.
-async function getAXSnapshot(client: CDPSession): Promise<AXSnapshot | null> {
+async function getAXSnapshot(
+  client: CDPSession,
+  frameOptions?: { frames: Frame[]; register: (frameId: string, frame: Frame) => void },
+): Promise<AXSnapshot | null> {
   {
     // Both trees in parallel: semantics from the AX tree, identity from the DOM.
     const [axResult, domResult] = await Promise.all([
@@ -181,65 +229,176 @@ async function getAXSnapshot(client: CDPSession): Promise<AXSnapshot | null> {
     const attrsByBackendId = new Map<number, StableAttrs>();
     if (domResult !== null) collectAttrs(domResult.root, attrsByBackendId);
 
-    const nodeMap = new Map<string, CDPAXNode>();
-    for (const n of nodes) nodeMap.set(n.nodeId, n);
+    // Every converted node that owns a DOM node, so a child frame's tree can be
+    // spliced under the exact `<iframe>` element that hosts it.
+    const byBackendId = new Map<number, AXSnapshot>();
 
-    const root = nodes.find((n) => !n.parentId || !nodeMap.has(n.parentId));
-    if (!root) return null;
+    /**
+     * Convert one frame's flat CDP node list into a tree.
+     *
+     * `frameId` is stamped on every node so the resolver can tell two identically
+     * named buttons in different frames apart, and so execution knows which frame
+     * to root its locator in. It is undefined for the top-level document.
+     */
+    function buildTree(flat: CDPAXNode[], frameId?: string): AXSnapshot | null {
+      const nodeMap = new Map<string, CDPAXNode>();
+      for (const n of flat) nodeMap.set(n.nodeId, n);
 
-    // Recursively collect non-ignored descendants, flattening any ignored layers.
-    function collectVisible(childIds: string[]): CDPAXNode[] {
-      const result: CDPAXNode[] = [];
-      for (const id of childIds) {
-        const child = nodeMap.get(id);
-        if (!child) continue;
-        if (child.ignored) {
-          result.push(...collectVisible(child.childIds ?? []));
-        } else {
-          result.push(child);
+      const rootNode = flat.find((n) => !n.parentId || !nodeMap.has(n.parentId));
+      if (!rootNode) return null;
+
+      // Recursively collect non-ignored descendants, flattening any ignored layers.
+      function collectVisible(childIds: string[]): CDPAXNode[] {
+        const result: CDPAXNode[] = [];
+        for (const id of childIds) {
+          const child = nodeMap.get(id);
+          if (!child) continue;
+          if (child.ignored) {
+            result.push(...collectVisible(child.childIds ?? []));
+          } else {
+            result.push(child);
+          }
         }
+        return result;
       }
-      return result;
+
+      function convert(node: CDPAXNode): AXSnapshot {
+        const role = String(node.role?.value ?? 'none');
+        const name = String(node.name?.value ?? '');
+        const result: AXSnapshot = { role, name };
+        if (frameId !== undefined) result.frameId = frameId;
+
+        const rawVal = node.value?.value;
+        if (rawVal !== undefined && rawVal !== null) result.value = String(rawVal);
+
+        const rawDesc = node.description?.value;
+        if (rawDesc !== undefined && rawDesc !== null) result.description = String(rawDesc);
+
+        const attrs =
+          node.backendDOMNodeId !== undefined
+            ? attrsByBackendId.get(node.backendDOMNodeId)
+            : undefined;
+        if (attrs !== undefined) result.attrs = attrs;
+
+        for (const prop of node.properties ?? []) {
+          const v = prop.value?.value;
+          if (prop.name === 'checked')
+            result.checked = v === true || v === 'true' ? true : v === 'mixed' ? 'mixed' : false;
+          else if (prop.name === 'disabled') result.disabled = v === true || v === 'true';
+          else if (prop.name === 'required') result.required = v === true || v === 'true';
+          else if (prop.name === 'expanded') result.expanded = v === true || v === 'true';
+          else if (prop.name === 'selected') result.selected = v === true || v === 'true';
+        }
+
+        if (node.backendDOMNodeId !== undefined) byBackendId.set(node.backendDOMNodeId, result);
+
+        // Ignored nodes are collapsed: skip the node but promote its children.
+        // This mirrors the old page.accessibility.snapshot() behaviour.
+        const visibleChildren = collectVisible(node.childIds ?? []);
+        if (visibleChildren.length > 0) {
+          result.children = visibleChildren.map(convert);
+        }
+
+        return result;
+      }
+
+      return convert(rootNode);
     }
 
-    function convert(node: CDPAXNode): AXSnapshot {
-      const role = String(node.role?.value ?? 'none');
-      const name = String(node.name?.value ?? '');
-      const result: AXSnapshot = { role, name };
+    const root = buildTree(nodes);
+    if (root === null) return null;
+    if (frameOptions === undefined) return root;
 
-      const rawVal = node.value?.value;
-      if (rawVal !== undefined && rawVal !== null) result.value = String(rawVal);
+    await mergeFrames(client, root, byBackendId, buildTree, frameOptions);
+    return root;
+  }
+}
 
-      const rawDesc = node.description?.value;
-      if (rawDesc !== undefined && rawDesc !== null) result.description = String(rawDesc);
+/**
+ * Splice every child frame's accessibility tree into the page's.
+ *
+ * `getFullAXTree` returns one document, so iframe content was simply absent from
+ * the view (issue #11). Attaching a CDP session to the frame is not an option —
+ * same-process iframes do not get one — but the page's own session accepts
+ * `getFullAXTree({frameId})`, and `DOM.getFrameOwner({frameId})` identifies the
+ * `<iframe>` element to hang the result under.
+ *
+ * Best-effort throughout: a frame that fails to read is left out, and the page's
+ * own tree is returned as it was.
+ */
+async function mergeFrames(
+  client: CDPSession,
+  root: AXSnapshot,
+  byBackendId: Map<number, AXSnapshot>,
+  buildTree: (flat: CDPAXNode[], frameId?: string) => AXSnapshot | null,
+  opts: { frames: Frame[]; register: (frameId: string, frame: Frame) => void },
+): Promise<void> {
+  let tree: CDPFrameTree;
+  try {
+    ({ frameTree: tree } = (await client.send('Page.getFrameTree')) as { frameTree: CDPFrameTree });
+  } catch {
+    return;
+  }
 
-      const attrs =
-        node.backendDOMNodeId !== undefined
-          ? attrsByBackendId.get(node.backendDOMNodeId)
-          : undefined;
-      if (attrs !== undefined) result.attrs = attrs;
+  const cdpFrames = dfsFrameTree(tree);
+  const pwFrames = opts.frames;
 
-      for (const prop of node.properties ?? []) {
-        const v = prop.value?.value;
-        if (prop.name === 'checked')
-          result.checked = v === true || v === 'true' ? true : v === 'mixed' ? 'mixed' : false;
-        else if (prop.name === 'disabled') result.disabled = v === true || v === 'true';
-        else if (prop.name === 'required') result.required = v === true || v === 'true';
-        else if (prop.name === 'expanded') result.expanded = v === true || v === 'true';
-        else if (prop.name === 'selected') result.selected = v === true || v === 'true';
+  // Child frames only; the first entry on both sides is the main frame.
+  const pending: { id: string; frame: Frame | undefined }[] = [];
+  for (let i = 1; i < cdpFrames.length; i++) {
+    if (pending.length >= MAX_FRAMES) break;
+    const cdp = cdpFrames[i];
+    if (cdp === undefined) continue;
+    const candidate = pwFrames[i];
+    // Positional pairing, confirmed by URL. A mismatch means the two trees moved
+    // apart mid-read; the frame is still merged into the view, just not
+    // actionable, which is better than acting in the wrong frame.
+    pending.push({ id: cdp.id, frame: candidate?.url() === cdp.url ? candidate : undefined });
+  }
+
+  const subtrees = await Promise.all(
+    pending.map(async ({ id }) => {
+      try {
+        const [ax, owner] = await Promise.all([
+          client.send('Accessibility.getFullAXTree', { frameId: id }) as Promise<{
+            nodes: CDPAXNode[];
+          }>,
+          client.send('DOM.getFrameOwner', { frameId: id }) as Promise<{ backendNodeId: number }>,
+        ]);
+        return { id, nodes: ax.nodes, ownerBackendId: owner.backendNodeId };
+      } catch {
+        return null;
       }
+    }),
+  );
 
-      // Ignored nodes are collapsed: skip the node but promote its children.
-      // This mirrors the old page.accessibility.snapshot() behaviour.
-      const visibleChildren = collectVisible(node.childIds ?? []);
-      if (visibleChildren.length > 0) {
-        result.children = visibleChildren.map(convert);
-      }
+  // Build every subtree before splicing any: a nested frame's `<iframe>` element
+  // lives in its parent frame's tree, which may itself still be unbuilt.
+  const built = subtrees.map((s) => (s === null ? null : { ...s, tree: buildTree(s.nodes, s.id) }));
 
-      return result;
+  let budget = MAX_FRAME_NODES;
+  for (const entry of built) {
+    if (entry === null || entry.tree === null) continue;
+
+    const size = countNodes(entry.tree);
+    if (size > budget) continue;
+    budget = budget - size;
+
+    const host = byBackendId.get(entry.ownerBackendId);
+    // The document's children hang directly off the `<iframe>` node; its own
+    // RootWebArea would only add a layer of nesting the model has no use for.
+    const children = entry.tree.children ?? [];
+    if (host !== undefined) {
+      host.children = [...(host.children ?? []), ...children];
+    } else {
+      // No matching `<iframe>` node in the AX tree (it can be ignored while its
+      // document is not). Attaching at the root keeps the content reachable.
+      root.children = [...(root.children ?? []), ...children];
     }
+  }
 
-    return convert(root);
+  for (const { id, frame } of pending) {
+    if (frame !== undefined) opts.register(id, frame);
   }
 }
 
@@ -362,13 +521,30 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     return cdp;
   }
 
+  /**
+   * Frames seen in the last snapshot, by CDP frame id.
+   *
+   * Rebuilt on every observation, and every action re-observes through the gate
+   * immediately before executing, so the entry an action looks up is at most one
+   * snapshot old. A frame that has since gone away resolves to nothing and the
+   * action falls back to the page rather than acting somewhere unintended.
+   */
+  let framesById = new Map<string, Frame>();
+
   async function axSnapshot(): Promise<AXSnapshot | null> {
+    const next = new Map<string, Frame>();
+    const frameOptions = {
+      frames: dfsFrames(page.mainFrame()),
+      register: (frameId: string, frame: Frame) => next.set(frameId, frame),
+    };
     try {
-      return await getAXSnapshot(await cdpSession());
+      return await getAXSnapshot(await cdpSession(), frameOptions);
     } catch {
       // Session can be torn down by a cross-document navigation; reattach once.
       cdp = null;
-      return getAXSnapshot(await cdpSession());
+      return await getAXSnapshot(await cdpSession(), frameOptions);
+    } finally {
+      framesById = next;
     }
   }
 
@@ -447,7 +623,10 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
    * (AC-R7).
    */
   function locate(fp: SemanticFingerprint) {
-    return page
+    // A locator built on the page never crosses into a frame, so an element that
+    // came from one is addressed through that frame (issue #11).
+    const scope = fp.frameId !== undefined ? (framesById.get(fp.frameId) ?? page) : page;
+    return scope
       .getByRole(fp.role as Parameters<Page['getByRole']>[0], { name: fp.accessibleName })
       .nth(fp.ordinalAmongSameRoleAndName);
   }
@@ -725,11 +904,22 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
       const cap = textOpts?.maxChars ?? DEFAULT_TEXT_CHARS;
       try {
         await settle();
-        const raw = await page.evaluate(
-          () =>
-            (globalThis as unknown as { document: { body?: { innerText?: string } } }).document.body
-              ?.innerText ?? '',
+        // Per frame, not per page: `innerText` stops at the frame boundary, so a
+        // page whose content is an embed would otherwise read as empty (#11).
+        const perFrame = await Promise.all(
+          dfsFrames(page.mainFrame())
+            .slice(0, MAX_FRAMES)
+            .map((f) =>
+              f
+                .evaluate(
+                  () =>
+                    (globalThis as unknown as { document: { body?: { innerText?: string } } })
+                      .document.body?.innerText ?? '',
+                )
+                .catch(() => ''),
+            ),
         );
+        const raw = perFrame.filter((t) => t.trim() !== '').join('\n\n');
         const tidied = raw
           .replace(/[ \t]+/g, ' ')
           .replace(/\n{3,}/g, '\n\n')
