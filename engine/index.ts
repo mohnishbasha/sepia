@@ -517,7 +517,10 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     });
   }
 
-  const page: Page = await context.newPage();
+  // Mutable: this is the *active* tab, and `tabs.switch()` changes it. Every
+  // closure below reads it through this binding, which is what makes switching
+  // retarget observe, click, screenshot and the rest (AC-T1).
+  let page: Page = await context.newPage();
 
   if (preset !== null) {
     // Coherence is checked before the session is handed out: a profile whose
@@ -562,6 +565,44 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
 
   // One CDP session for the page's lifetime, recreated only if it drops.
   let cdp: CDPSession | null = null;
+
+  // ── tab identity ──
+  // Ids are stable per page, not indices into `context.pages()`. An index
+  // silently means a different tab once an earlier one closes — the same defect
+  // as a reused handle, and worth refusing in the same way.
+  const tabIds = new Map<Page, string>();
+  let tabCounter = 0;
+
+  function idFor(target: Page): string {
+    const existing = tabIds.get(target);
+    if (existing !== undefined) return existing;
+    tabCounter++;
+    const id = `t${String(tabCounter)}`;
+    tabIds.set(target, id);
+    return id;
+  }
+
+  /**
+   * Make a page the active one.
+   *
+   * The CDP session belongs to the page it was attached to, and handles belong
+   * to the document that issued them — both have to go, or the next observation
+   * describes one page while actions land on another.
+   */
+  function activate(target: Page): void {
+    page = target;
+    cdp = null;
+    clearHandleMap(handleMap);
+    // Frames belong to the page that owns them. Nothing can reach a stale entry
+    // today — the handles that would name one are gone with the map — but a
+    // locator rooted in a dead frame is not a failure worth leaving available.
+    framesById = new Map<string, Frame>();
+    try {
+      lastOrigin = new URL(target.url()).origin;
+    } catch {
+      lastOrigin = '';
+    }
+  }
   async function cdpSession(): Promise<CDPSession> {
     if (cdp === null) cdp = await page.context().newCDPSession(page);
     return cdp;
@@ -1066,10 +1107,13 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
       async new(url?: string): Promise<{ ok: boolean; tabId?: string }> {
         try {
           const newPage = await context.newPage();
-          const tabId = String(context.pages().indexOf(newPage));
+          const tabId = idFor(newPage);
           if (url !== undefined) {
             await newPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
           }
+          // Deliberately does NOT become active. Focus moves only when asked
+          // for, so a caller that opens a tab to come back to later does not
+          // find its next action landing somewhere it did not choose.
           return { ok: true, tabId };
         } catch {
           return { ok: false };
@@ -1078,18 +1122,20 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
 
       async close(id?: string): Promise<{ ok: boolean }> {
         try {
-          const pages = context.pages();
-          if (id !== undefined) {
-            const idx = parseInt(id, 10);
-            const target = pages[idx];
-            if (target !== undefined) {
-              await target.close();
-            }
-          } else {
-            const last = pages[pages.length - 1];
-            if (last !== undefined) {
-              await last.close();
-            }
+          const target = id !== undefined ? context.pages().find((p) => idFor(p) === id) : page;
+          if (target === undefined) return { ok: false };
+
+          const wasActive = target === page;
+          await target.close();
+          tabIds.delete(target);
+
+          if (wasActive) {
+            // Closing the active tab used to leave `page` pointing at a closed
+            // page, and every later call died on it. A session always has an
+            // active tab; if that meant closing the last one, open a blank
+            // replacement rather than leaving the engine unusable.
+            const remaining = context.pages();
+            activate(remaining[remaining.length - 1] ?? (await context.newPage()));
           }
           return { ok: true };
         } catch {
@@ -1100,11 +1146,9 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
       async list(): Promise<TabInfo[]> {
         const pages = context.pages();
         const results: TabInfo[] = [];
-        for (let i = 0; i < pages.length; i++) {
-          const p = pages[i];
-          if (p === undefined) continue;
+        for (const p of pages) {
           results.push({
-            id: String(i),
+            id: idFor(p),
             url: p.url(),
             title: await p.title(),
             active: p === page,
@@ -1115,11 +1159,13 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
 
       async switch(id: string): Promise<{ ok: boolean }> {
         try {
-          const pages = context.pages();
-          const idx = parseInt(id, 10);
-          const target = pages[idx];
+          const target = context.pages().find((p) => idFor(p) === id);
           if (target === undefined) return { ok: false };
           await target.bringToFront();
+          // `bringToFront` alone was the whole of the old implementation, which
+          // is why switching appeared to work and changed nothing: the engine
+          // kept acting on the page it was constructed with (AC-T1).
+          activate(target);
           return { ok: true };
         } catch {
           return { ok: false };

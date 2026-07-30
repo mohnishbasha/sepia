@@ -623,7 +623,10 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
     'tabs_new',
     {
       title: 'Open a new tab',
-      description: 'Open a new tab, optionally navigating it to a URL. Returns the new tab id.',
+      description:
+        'Open a new tab, optionally navigating it to a URL. Returns the new tab id. ' +
+        'The new tab does NOT become active — call `tabs_switch` with the returned id ' +
+        'before acting on it, or your next action lands on the tab you were already on.',
       inputSchema: { url: z.string().optional() },
       annotations: WRITES,
     },
@@ -635,8 +638,11 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
     {
       title: 'Switch tab',
       description:
-        'Make another tab active. Handles belong to the page that produced them, so call ' +
-        '`observe` after switching.',
+        'Make another tab active. Every later action — observe, click, type, screenshot — ' +
+        'targets this tab until you switch again. Tab ids come from `tabs_list` or ' +
+        '`tabs_new` and stay valid as other tabs close; an unknown id is refused rather ' +
+        'than resolved to a neighbour. Handles belong to the page that produced them, so ' +
+        'call `observe` after switching.',
       inputSchema: { tabId: z.string().min(1) },
       annotations: { ...WRITES, idempotentHint: true },
     },
@@ -647,7 +653,9 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
     'tabs_close',
     {
       title: 'Close a tab',
-      description: 'Close a tab by id, or the last one if no id is given.',
+      description:
+        'Close a tab by id, or the active one if no id is given. Closing the active tab ' +
+        'moves focus to another, so the session always has a tab to act on.',
       inputSchema: { tabId: z.string().optional() },
       annotations: DESTROYS,
     },
