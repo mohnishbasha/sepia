@@ -52,7 +52,9 @@ const SYSTEM_PROMPT_DEFAULT = `You are a browser automation agent. On each turn 
 {"action":"click","handle":"e12"}
 {"action":"type","handle":"e13","text":"hello@example.com"}
 {"action":"open","url":"https://example.com"}
+{"action":"text"}
 {"action":"done","summary":"Completed the task"}
+The outline lists controls and headings, not article prose. When the answer is in the page's body text, use {"action":"text"} to read it.
 Only use handles that appear in the current page. Never fabricate handles.`;
 
 // Minimal system prompt — shorter and more schema-explicit for SLMs (≤ 7B).

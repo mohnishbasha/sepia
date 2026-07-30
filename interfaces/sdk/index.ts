@@ -11,6 +11,7 @@ import type {
   WaitConditionType,
   Verbosity,
   ScreenshotResult,
+  TextResult,
 } from '../../types/index.js';
 import type { RunTrace } from '../../agent/index.js';
 
@@ -27,6 +28,7 @@ export type {
   WaitConditionType,
   Verbosity,
   ScreenshotResult,
+  TextResult,
 };
 
 export interface SepiaSession {
@@ -39,6 +41,7 @@ export interface SepiaSession {
   scroll: (target: 'up' | 'down' | string, distance?: number) => Promise<ActionResult>;
   press: (key: string) => Promise<ActionResult>;
   read: (handle: string) => Promise<ReadResult>;
+  text: (opts?: { maxChars?: number }) => Promise<TextResult>;
   screenshot: (opts?: { path?: string; fullPage?: boolean }) => Promise<ScreenshotResult>;
   wait: (condition: WaitConditionType, timeoutMs?: number) => Promise<WaitResult>;
   open: (url: string) => Promise<ActionResult>;
@@ -82,6 +85,7 @@ export async function createSession(config: SepiaConfig): Promise<SepiaSession> 
     scroll: (target, distance) => engine.scroll(target, distance),
     press: (key) => engine.press(key),
     read: (handle) => engine.read(handle),
+    text: (textOpts) => engine.text(textOpts),
     screenshot: (shotOpts) => engine.screenshot(shotOpts),
     wait: (condition, timeoutMs) => engine.wait(condition, timeoutMs),
     open: (url) => engine.open(url),

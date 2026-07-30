@@ -140,7 +140,7 @@ describe('MCP-10 — stdout carries only JSON-RPC', () => {
       name: string;
     }>;
 
-    expect(tools.length, `stdout:\n${stdout}\nstderr:\n${stderr}`).toBe(18);
+    expect(tools.length, `stdout:\n${stdout}\nstderr:\n${stderr}`).toBe(19);
     expect(tools.map((t) => t.name)).toContain('tabs_new');
   }, 60_000);
 });

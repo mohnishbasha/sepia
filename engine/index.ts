@@ -24,13 +24,23 @@ import type {
   TabInfo,
   WaitConditionType,
   ScreenshotResult,
+  StableAttrs,
+  TextResult,
 } from '../types/index.js';
 import type { HandleMap } from '../resolver/index.js';
 import { createRateLimiter, createRobotsCache } from '../security/index.js';
 import type { RateLimiter, RobotsCache } from '../security/index.js';
 import { getPreset, validateAndStart } from '../fingerprint/index.js';
 
-export type { CompactView, ActionResult, ReadResult, WaitResult, TabInfo, ScreenshotResult };
+export type {
+  CompactView,
+  ActionResult,
+  ReadResult,
+  WaitResult,
+  TabInfo,
+  ScreenshotResult,
+  TextResult,
+};
 
 export interface EngineOptions {
   executablePath?: string;
@@ -67,6 +77,7 @@ export interface SepiaEngine {
   scroll: (target: 'up' | 'down' | string, distance?: number) => Promise<ActionResult>;
   press: (key: string) => Promise<ActionResult>;
   read: (handle: string) => Promise<ReadResult>;
+  text: (opts?: { maxChars?: number }) => Promise<TextResult>;
   screenshot: (opts?: { path?: string; fullPage?: boolean }) => Promise<ScreenshotResult>;
   wait: (condition: WaitConditionType, timeoutMs?: number) => Promise<WaitResult>;
   back: () => Promise<ActionResult>;
@@ -91,6 +102,7 @@ interface CDPAXProperty {
 }
 interface CDPAXNode {
   nodeId: string;
+  backendDOMNodeId?: number;
   parentId?: string;
   childIds?: string[];
   role?: CDPAXValue;
@@ -101,14 +113,73 @@ interface CDPAXNode {
   ignored?: boolean;
 }
 
+/** A DOM node as returned by `DOM.getDocument`. */
+interface CDPDOMNode {
+  backendNodeId?: number;
+  /** Flat [name, value, name, value, ...] pairs. */
+  attributes?: string[];
+  children?: CDPDOMNode[];
+  shadowRoots?: CDPDOMNode[];
+  contentDocument?: CDPDOMNode;
+}
+
+/** Attributes worth keeping: the ones that identify an element across changes. */
+function pickAttrs(flat: string[] | undefined): StableAttrs | undefined {
+  if (flat === undefined) return undefined;
+  const out: StableAttrs = {};
+  for (let i = 0; i + 1 < flat.length; i += 2) {
+    const name = flat[i];
+    const value = flat[i + 1];
+    if (value === undefined || value === '') continue;
+    if (name === 'id') out.id = value;
+    else if (name === 'name') out.name = value;
+    else if (name === 'data-testid' || name === 'data-test-id') out.dataTestId = value;
+    else if (name === 'aria-label') out.ariaLabel = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * Map every DOM node's `backendNodeId` to its identifying attributes.
+ *
+ * The accessibility tree carries semantics but no attributes, so this is the
+ * other half of the join that lets a handle survive a reorder rather than
+ * relying on position (issue #16). Walks shadow roots and iframe documents too,
+ * since `pierce` returns them inline.
+ */
+function collectAttrs(root: CDPDOMNode, into: Map<number, StableAttrs>): void {
+  const stack: CDPDOMNode[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === undefined) continue;
+    const attrs = pickAttrs(node.attributes);
+    if (attrs !== undefined && node.backendNodeId !== undefined) {
+      into.set(node.backendNodeId, attrs);
+    }
+    if (node.children) stack.push(...node.children);
+    if (node.shadowRoots) stack.push(...node.shadowRoots);
+    if (node.contentDocument) stack.push(node.contentDocument);
+  }
+}
+
 // Fetch the full AX tree via CDP and convert directly to AXSnapshot.
 // The caller owns the session lifetime — attaching and detaching per call cost
 // a round trip on every observation.
 async function getAXSnapshot(client: CDPSession): Promise<AXSnapshot | null> {
   {
-    const { nodes } = (await client.send('Accessibility.getFullAXTree')) as {
-      nodes: CDPAXNode[];
-    };
+    // Both trees in parallel: semantics from the AX tree, identity from the DOM.
+    const [axResult, domResult] = await Promise.all([
+      client.send('Accessibility.getFullAXTree') as Promise<{ nodes: CDPAXNode[] }>,
+      (
+        client.send('DOM.getDocument', { depth: -1, pierce: true }) as Promise<{
+          root: CDPDOMNode;
+        }>
+      ).catch(() => null),
+    ]);
+    const { nodes } = axResult;
+
+    const attrsByBackendId = new Map<number, StableAttrs>();
+    if (domResult !== null) collectAttrs(domResult.root, attrsByBackendId);
 
     const nodeMap = new Map<string, CDPAXNode>();
     for (const n of nodes) nodeMap.set(n.nodeId, n);
@@ -142,6 +213,12 @@ async function getAXSnapshot(client: CDPSession): Promise<AXSnapshot | null> {
       const rawDesc = node.description?.value;
       if (rawDesc !== undefined && rawDesc !== null) result.description = String(rawDesc);
 
+      const attrs =
+        node.backendDOMNodeId !== undefined
+          ? attrsByBackendId.get(node.backendDOMNodeId)
+          : undefined;
+      if (attrs !== undefined) result.attrs = attrs;
+
       for (const prop of node.properties ?? []) {
         const v = prop.value?.value;
         if (prop.name === 'checked')
@@ -173,6 +250,9 @@ async function getAXSnapshot(client: CDPSession): Promise<AXSnapshot | null> {
  * unescaped quote would otherwise terminate the selector and let page text
  * alter which element is matched.
  */
+/** Default cap on `text()`, chosen to stay well inside host output limits. */
+const DEFAULT_TEXT_CHARS = 20_000;
+
 export function cssQuote(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
@@ -630,6 +710,35 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
             handle,
           },
         };
+      }
+    },
+
+    /**
+     * The page's readable text.
+     *
+     * The compact view deliberately omits prose, and `read` needs a handle,
+     * which only interactive elements get — so without this there is no way to
+     * retrieve article text at all (issue #27). Capped, and honest about it:
+     * silent truncation would let a caller quote a sentence that was cut.
+     */
+    async text(textOpts?: { maxChars?: number }): Promise<TextResult> {
+      const cap = textOpts?.maxChars ?? DEFAULT_TEXT_CHARS;
+      try {
+        await settle();
+        const raw = await page.evaluate(
+          () =>
+            (globalThis as unknown as { document: { body?: { innerText?: string } } }).document.body
+              ?.innerText ?? '',
+        );
+        const tidied = raw
+          .replace(/[ \t]+/g, ' ')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+        return tidied.length > cap
+          ? { ok: true, text: tidied.slice(0, cap), truncated: true }
+          : { ok: true, text: tidied, truncated: false };
+      } catch (err) {
+        return { ok: false, error: { code: 'UNKNOWN', message: String(err) } };
       }
     },
 

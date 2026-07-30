@@ -89,6 +89,15 @@ export interface ScreenshotResult {
   error?: ActionError;
 }
 
+export interface TextResult {
+  ok: boolean;
+  /** The page's readable text, capped at the requested length. */
+  text?: string;
+  /** True when the cap cut the text short, so a caller knows there is more. */
+  truncated?: boolean;
+  error?: ActionError;
+}
+
 export interface ReadResult {
   ok: boolean;
   text?: string;
