@@ -80,6 +80,9 @@ export async function createSession(config: SepiaConfig): Promise<SepiaSession> 
       ? { settleTimeoutMs: config.browser.settleTimeoutMs }
       : {}),
   };
+  if (config.security.allowedDomains !== undefined) {
+    engineOpts.security = { allowedDomains: config.security.allowedDomains };
+  }
   if (config.browser.executablePath !== undefined) {
     engineOpts.executablePath = config.browser.executablePath;
   }

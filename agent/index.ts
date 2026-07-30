@@ -6,6 +6,10 @@ import type { TypedAction } from '../actions/index.js';
 import {
   createAuditor,
   redactSecrets,
+  isSecretFieldName,
+  extractGoalSecrets,
+  applyGoalSecrets,
+  containsGoalSecret,
   redactCompactView,
   sanitizeForLLM,
   createNamedProfile,
@@ -155,7 +159,11 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
   const config = mergeConfig(rawConfig);
 
   return {
-    async run(goal: string): Promise<RunTrace> {
+    async run(rawGoal: string): Promise<RunTrace> {
+      // AC-P7: lift any credential out of the goal before it can reach a prompt,
+      // a log, or the trace. `goal` from here on is the safe form; the literals
+      // live only in `goalSecrets` and are put back inside the engine call.
+      const { redacted: goal, secrets: goalSecrets } = extractGoalSecrets(rawGoal);
       // Bound the retry sleep once, up front. An unbounded duration reaching
       // setTimeout parks the run (and, on the HTTP server, a concurrency slot)
       // for as long as the caller likes.
@@ -424,6 +432,16 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
             break;
           }
 
+          // Below the model boundary: the placeholder the model echoed back
+          // becomes the real credential only here, on its way to the page. It
+          // must happen before dispatch — afterwards is a run that types a
+          // placeholder into a password field and reports success (AC-P7).
+          const carriedGoalSecret =
+            typedAction.text !== undefined && containsGoalSecret(typedAction.text, goalSecrets);
+          if (carriedGoalSecret && typedAction.text !== undefined) {
+            typedAction.text = applyGoalSecrets(typedAction.text, goalSecrets);
+          }
+
           // Dispatch action with stale handle retry
           let result: Awaited<ReturnType<typeof dispatch>>;
           let confidence = 1;
@@ -469,8 +487,18 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
           }
 
           if (typedAction.text) {
-            const redacted = redactSecrets(typedAction.text);
-            secretsRedacted = redacted.count > 0;
+            // Two complementary rules. Shape catches a credential wherever it
+            // appears; destination catches one that looks like nothing at all.
+            // A password is only recognisable by the field it was typed into —
+            // no pattern will ever call `hunter2` secret-shaped (AC-P6).
+            const target =
+              typedAction.handle !== undefined
+                ? view.nodes.find((n) => n.handle === typedAction.handle)
+                : undefined;
+            secretsRedacted =
+              carriedGoalSecret ||
+              redactSecrets(typedAction.text).count > 0 ||
+              (target !== undefined && isSecretFieldName(target.name));
           }
 
           const latencyMs = Date.now() - stepStart;

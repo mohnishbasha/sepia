@@ -228,27 +228,30 @@ documentation. Every item below is test-first with a numbered AC.
 
 ### New acceptance criteria
 
-| AC     | Description                                                               | Where                                        |
-| ------ | ------------------------------------------------------------------------- | -------------------------------------------- |
-| AC-AG5 | A run returns the model's `done` summary as `RunTrace.answer`             | `tests/integration/answer.test.ts`           |
-| AC-AG6 | `gateHandle()` refuses to act below `agent.confidenceThreshold`           | `tests/unit/resolver-gate.test.ts`           |
-| AC-AG7 | Exhausted stale/low-confidence retries end the run as `stale_bail`        | `tests/integration/stale-bail.test.ts`       |
-| AC-AG8 | A rejected model reply is retried WITH corrective feedback                | `tests/integration/retry-feedback.test.ts`   |
-| AC-A5  | `parseAction()` validates required fields and field types                 | `tests/contract/action-validation.test.ts`   |
-| AC-A6  | `screenshot` capture across engine, action enum, SDK, MCP                 | `tests/integration/screenshot.test.ts`       |
-| AC-A7  | Page prose is retrievable via `text` across engine, action enum, SDK, MCP | `tests/integration/page-text.test.ts`        |
-| AC-A8  | A decided plan runs in one call, each step still gated                    | `tests/integration/action-batch.test.ts`     |
-| AC-R6  | N identically-named same-role elements get N distinct handles             | `tests/integration/list-handles.test.ts`     |
-| AC-R7  | Acting on a handle hits that element, not the first role+name match       | `tests/integration/list-handles.test.ts`     |
-| AC-R8  | Bounded settle on never-idle pages; handle map is pruned                  | `tests/integration/settle-budget.test.ts`    |
-| AC-R10 | A handle from a frame acts inside that frame, with per-frame ordinals     | `tests/integration/iframes.test.ts`          |
-| AC-R9  | Handle identity uses real DOM attributes joined from `DOM.getDocument`    | `tests/integration/stable-attrs.test.ts`     |
-| AC-S7  | Token counts come from `cl100k_base`, not `characters / 4`                | `tests/token-budget/tokenizer.test.ts`       |
-| AC-S10 | Child-frame accessibility trees are merged into the view                  | `tests/integration/iframes.test.ts`          |
-| AC-S9  | `full` verbosity descends into unnamed containers and emits prose         | `tests/integration/page-text.test.ts`        |
-| AC-F6  | The configured preset is applied and validated before a session is used   | `tests/fingerprint/engine-profile.test.ts`   |
-| AC-P5  | Secret field values are stripped from the view before it reaches the LLM  | `tests/data-boundary/view-redaction.test.ts` |
-| SR-11  | HTTP: allowlisted config, mandatory auth, body cap, non-racy concurrency  | `tests/integration/http-hardening.test.ts`   |
+| AC     | Description                                                               | Where                                            |
+| ------ | ------------------------------------------------------------------------- | ------------------------------------------------ |
+| AC-AG5 | A run returns the model's `done` summary as `RunTrace.answer`             | `tests/integration/answer.test.ts`               |
+| AC-AG6 | `gateHandle()` refuses to act below `agent.confidenceThreshold`           | `tests/unit/resolver-gate.test.ts`               |
+| AC-AG7 | Exhausted stale/low-confidence retries end the run as `stale_bail`        | `tests/integration/stale-bail.test.ts`           |
+| AC-AG8 | A rejected model reply is retried WITH corrective feedback                | `tests/integration/retry-feedback.test.ts`       |
+| AC-A5  | `parseAction()` validates required fields and field types                 | `tests/contract/action-validation.test.ts`       |
+| AC-A6  | `screenshot` capture across engine, action enum, SDK, MCP                 | `tests/integration/screenshot.test.ts`           |
+| AC-A7  | Page prose is retrievable via `text` across engine, action enum, SDK, MCP | `tests/integration/page-text.test.ts`            |
+| AC-A8  | A decided plan runs in one call, each step still gated                    | `tests/integration/action-batch.test.ts`         |
+| AC-R6  | N identically-named same-role elements get N distinct handles             | `tests/integration/list-handles.test.ts`         |
+| AC-R7  | Acting on a handle hits that element, not the first role+name match       | `tests/integration/list-handles.test.ts`         |
+| AC-R8  | Bounded settle on never-idle pages; handle map is pruned                  | `tests/integration/settle-budget.test.ts`        |
+| AC-R9  | Handle identity uses real DOM attributes joined from `DOM.getDocument`    | `tests/integration/stable-attrs.test.ts`         |
+| AC-R10 | A handle from a frame acts inside that frame, with per-frame ordinals     | `tests/integration/iframes.test.ts`              |
+| AC-S7  | Token counts come from `cl100k_base`, not `characters / 4`                | `tests/token-budget/tokenizer.test.ts`           |
+| AC-S9  | `full` verbosity descends into unnamed containers and emits prose         | `tests/integration/page-text.test.ts`            |
+| AC-S10 | Child-frame accessibility trees are merged into the view                  | `tests/integration/iframes.test.ts`              |
+| AC-F6  | The configured preset is applied and validated before a session is used   | `tests/fingerprint/engine-profile.test.ts`       |
+| AC-P5  | Secret field values are stripped from the view before it reaches the LLM  | `tests/data-boundary/view-redaction.test.ts`     |
+| AC-P6  | A credential is flagged by the field it went into, not only its shape     | `tests/data-boundary/secret-destination.test.ts` |
+| AC-P7  | A credential in the goal reaches neither the model nor the trace          | `tests/data-boundary/goal-secrets.test.ts`       |
+| SR-11  | HTTP: allowlisted config, mandatory auth, body cap, non-racy concurrency  | `tests/integration/http-hardening.test.ts`       |
+| SR-13  | `security.allowedDomains` restricts navigation, including via links       | `tests/integration/allowed-domains.test.ts`      |
 
 ### Defects this pass fixed
 

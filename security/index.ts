@@ -4,6 +4,39 @@
 const FETCH_TIMEOUT_MS = 5_000;
 const ROBOTS_CACHE_TTL_MS = 5 * 60 * 1_000; // 5 minutes
 
+// ── Domain allowlist ──────────────────────────────────────────────────────────
+
+/**
+ * Is this hostname covered by the allowlist? (SR-13, issue #14)
+ *
+ * An empty or absent list means unrestricted, so the control stays opt-in and
+ * existing configurations behave as before.
+ *
+ * Matching is exact-or-subdomain. The tempting one-liner — `hostname.endsWith(
+ * domain)` — admits `evil-example.com` for an allowlist of `example.com`, which
+ * is precisely the kind of hole an allowlist exists to close. A leading `*.` is
+ * accepted because operators write it, and means the same thing.
+ */
+export function isDomainAllowed(hostname: string, allowed?: string[]): boolean {
+  if (allowed === undefined || allowed.length === 0) return true;
+
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  return allowed.some((entry) => {
+    const domain = entry.toLowerCase().replace(/^\*\./, '').replace(/\.$/, '');
+    if (domain === '') return false;
+    return host === domain || host.endsWith(`.${domain}`);
+  });
+}
+
+/** Hostname of a URL, or null when it does not parse. */
+export function hostnameOf(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
 // ── Rate limiter ──────────────────────────────────────────────────────────────
 
 export interface RateLimiter {
