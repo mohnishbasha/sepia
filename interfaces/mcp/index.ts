@@ -15,7 +15,11 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createRequire } from 'node:module';
 import { z } from 'zod';
-import { createEngine } from '../../engine/index.js';
+import {
+  createEngine,
+  isMissingBrowserError,
+  MISSING_BROWSER_MESSAGE,
+} from '../../engine/index.js';
 import type { EngineOptions, SepiaEngine } from '../../engine/index.js';
 import { dispatchBatch, parseBatch, MAX_BATCH_STEPS } from '../../actions/index.js';
 import { redactCompactView } from '../../privacy/index.js';
@@ -221,6 +225,11 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
       // executable and cache paths, and the host is an untrusted-ish consumer
       // that only needs to know the action did not happen.
       process.stderr.write(`[sepia mcp] ${err instanceof Error ? err.stack : String(err)}\n`);
+      // One exception to the generic reply: a browser that was never installed
+      // is not a transient fault and no amount of retrying fixes it. The
+      // purpose-written message says what to run and carries no path, so it
+      // satisfies both requirements at once (MCP-15).
+      if (isMissingBrowserError(err)) return fail(MISSING_BROWSER_MESSAGE);
       return fail(
         'BROWSER_ERROR: the browser could not complete that action. ' +
           'Retry, or call `observe` to re-read the page.',

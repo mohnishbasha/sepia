@@ -208,6 +208,25 @@ reaches the agent loop, so no endpoint, no key, and no model configuration apply
 sepia mcp          # after `make cli-link`
 ```
 
+**Installing from a registry**
+
+Once published, a host can use the package directly without cloning:
+
+```bash
+npm install -g sepia --registry <your-registry>   # or scope it in .npmrc
+sepia mcp
+```
+
+Sepia drives a real Chromium and does not bundle one, and installing the package
+does not fetch it. Run this once:
+
+```bash
+npx playwright install chromium
+```
+
+Skipping it is not silent — the first tool call returns `NO_BROWSER` naming that
+exact command, rather than a generic failure.
+
 **Claude Code**
 
 ```bash
@@ -285,6 +304,41 @@ tell which is which. Take a screenshot before a destructive action on repeated
 controls. Tracked as [#3](https://github.com/mohnishbasha/sepia/issues/3).
 
 ---
+
+## Releasing
+
+Publishing is a manual, deliberate act — the `Publish` workflow is
+`workflow_dispatch` only. Pushing to master does not publish anything.
+
+Why not on push: a registry rejects a republish of an existing version, so every
+merge that did not bump the version would fail the run, and a permanently red
+master teaches everyone to ignore it. Publishing automatically when the version
+_changes_ is closer, but it fires the moment a bump merges — whether or not the
+release was meant to go out then — and offers no way to ship a later commit
+without another bump.
+
+To release:
+
+1. Bump `version` in `package.json` (its own PR, so the release has a reviewable
+   commit).
+2. Actions → **Publish** → Run workflow. Leave **dry_run** checked for the first
+   run: it builds, packs, verifies the tarball and smoke tests the packed MCP
+   server without publishing.
+3. Re-run with **dry_run** unchecked to publish. The run also creates the `vX.Y.Z`
+   tag and a GitHub release, so the decision is recorded outside Actions history.
+
+The run refuses before building if that version already exists in the registry.
+
+**Repository configuration**
+
+| Kind     | Name               | Purpose                                                         |
+| -------- | ------------------ | --------------------------------------------------------------- |
+| Variable | `NPM_REGISTRY_URL` | Target registry. Defaults to npmjs if unset.                    |
+| Secret   | `NPM_TOKEN`        | Publish token for that registry. The run fails early if absent. |
+
+The registry lives in a variable rather than `package.json` so the same workflow
+can target a private registry or npmjs without a code change, and so nothing in
+the repo hardcodes where releases go.
 
 ## Deploy
 

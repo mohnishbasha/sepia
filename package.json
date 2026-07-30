@@ -48,7 +48,8 @@
     "test:example": "vitest run tests/example",
     "dev": "tsx watch cli/index.ts",
     "security:audit": "pnpm audit --audit-level=critical",
-    "prepare": "husky"
+    "prepare": "husky",
+    "prepublishOnly": "pnpm tsc -p tsconfig.build.json && chmod +x dist/cli/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
@@ -82,5 +83,12 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
-  }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "soul.md",
+    "SKILLS.md"
+  ]
 }

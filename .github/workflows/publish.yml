@@ -1,0 +1,213 @@
+name: Publish
+
+# Manual only, deliberately.
+#
+# Publishing on every push to master does not work: a registry rejects a
+# republish of an existing version, so every merge that did not bump the version
+# fails the run, red master becomes the normal state, and the signal is lost.
+# Publishing automatically on a version *change* is closer, but it fires the
+# instant a bump merges, whether or not the release was meant to go out then, and
+# it offers no way to ship a later commit without another bump.
+#
+# So releasing is an explicit act. The run publishes whatever commit it is
+# pointed at, refuses if that version already exists in the registry, and leaves
+# a tag and a GitHub release behind so the decision is recorded somewhere other
+# than this workflow's history.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Pack and verify without publishing'
+        type: boolean
+        default: true
+      dist_tag:
+        description: 'Registry tag to publish under'
+        type: string
+        default: latest
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '24.18.0'
+  PNPM_VERSION: '9.12.3'
+
+jobs:
+  publish:
+    name: Publish to registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: write # create the tag and the release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@008330803749db0355799c700092d9a85fd074e9 # v6.0.9
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # The registry lives in a repository variable so the same workflow can
+      # target a private registry or npmjs without editing package.json, and so
+      # nothing in the repo hardcodes where releases go.
+      - name: Resolve target registry
+        id: registry
+        run: |
+          url="${{ vars.NPM_REGISTRY_URL }}"
+          if [ -z "$url" ]; then url="https://registry.npmjs.org"; fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Publishing to $url"
+
+      - name: Read package identity
+        id: pkg
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tarball=${name//\//-}-${version}.tgz" >> "$GITHUB_OUTPUT"
+          echo "$name@$version"
+
+      # Fail before building rather than after: a version that already exists is
+      # a mistake in the request, and the operator should hear it immediately.
+      - name: Refuse to republish an existing version
+        env:
+          REGISTRY: ${{ steps.registry.outputs.url }}
+          NAME: ${{ steps.pkg.outputs.name }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          if npm view "$NAME@$VERSION" version --registry "$REGISTRY" >/dev/null 2>&1; then
+            echo "::error::$NAME@$VERSION is already published to $REGISTRY. Bump the version in package.json first."
+            exit 1
+          fi
+          echo "$NAME@$VERSION is not yet published — proceeding."
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The full gate again, on the exact commit being released. CI already ran
+      # it on master, but a release can point at any commit and the tarball is
+      # what consumers get — this is the last place to find out.
+      - name: Lint
+        run: pnpm eslint .
+
+      - name: Typecheck
+        run: pnpm tsc --noEmit
+
+      - name: Install Chromium for the test suite
+        run: pnpm exec playwright install --only-shell --with-deps chromium
+
+      - name: Test
+        run: pnpm vitest run
+
+      - name: Build
+        run: pnpm tsc -p tsconfig.build.json && chmod +x dist/cli/index.js
+
+      - name: Pack
+        run: pnpm pack
+
+      # A tarball that is missing dist/, or that carries the test suite and
+      # fixtures, is a broken release that still publishes successfully.
+      - name: Verify tarball contents
+        env:
+          TARBALL: ${{ steps.pkg.outputs.tarball }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          echo "Inspecting $TARBALL"
+          tar -tzf "$TARBALL" | sort > /tmp/contents.txt
+          sed 's/^/  /' /tmp/contents.txt | head -40
+
+          for required in package/dist/cli/index.js package/dist/interfaces/mcp/index.js \
+                          package/dist/interfaces/sdk/index.js package/README.md; do
+            grep -qx "$required" /tmp/contents.txt || {
+              echo "::error::$required missing from the tarball"; exit 1; }
+          done
+
+          if grep -qE '^package/(tests|fixtures|helm|\.github)/' /tmp/contents.txt; then
+            echo "::error::tarball carries files that should not ship — check the files field"
+            exit 1
+          fi
+
+          echo "Tarball for $VERSION looks well formed."
+
+      # A published package whose entry point does not start is the failure this
+      # catches. The tarball is installed into a clean directory and driven over
+      # real stdio JSON-RPC — see scripts/smoke-mcp.mjs for why a driver rather
+      # than a shell pipe.
+      - name: Smoke test the packed artifact
+        env:
+          TARBALL: ${{ steps.pkg.outputs.tarball }}
+        run: |
+          mkdir -p /tmp/smoke && cd /tmp/smoke
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund "$GITHUB_WORKSPACE/$TARBALL" >/dev/null
+          node "$GITHUB_WORKSPACE/scripts/smoke-mcp.mjs" /tmp/smoke/node_modules/.bin/sepia
+
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        env:
+          REGISTRY: ${{ steps.registry.outputs.url }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN is not set for this repository"
+            exit 1
+          fi
+          host=$(node -p "new URL(process.env.REGISTRY).host")
+          # Written per run rather than committed, so the token never lands on disk
+          # in the repo and the registry can change without a code change.
+          {
+            echo "registry=$REGISTRY"
+            echo "//$host/:_authToken=\${NODE_AUTH_TOKEN}"
+          } > "$HOME/.npmrc"
+          npm publish "${{ steps.pkg.outputs.tarball }}" \
+            --registry "$REGISTRY" \
+            --tag "${{ inputs.dist_tag }}"
+
+      - name: Tag the release
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.pkg.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes \
+            "${{ steps.pkg.outputs.tarball }}"
+
+      - name: Summary
+        env:
+          NAME: ${{ steps.pkg.outputs.name }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+          REGISTRY: ${{ steps.registry.outputs.url }}
+        run: |
+          {
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              echo "### Dry run — nothing was published"
+              echo
+              echo "\`$NAME@$VERSION\` packed, verified and smoke tested against $REGISTRY."
+              echo "Re-run with **dry_run unchecked** to publish."
+            else
+              echo "### Published \`$NAME@$VERSION\`"
+              echo
+              echo "- registry: $REGISTRY"
+              echo "- tag: \`${{ inputs.dist_tag }}\`"
+              echo "- git tag: \`v$VERSION\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
