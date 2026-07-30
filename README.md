@@ -307,38 +307,51 @@ controls. Tracked as [#3](https://github.com/mohnishbasha/sepia/issues/3).
 
 ## Releasing
 
-Publishing is a manual, deliberate act — the `Publish` workflow is
-`workflow_dispatch` only. Pushing to master does not publish anything.
+Publishing happens only when a maintainer publishes a GitHub Release — the same
+flow as `smallcase-mcp` to PyPI. Merging a pull request never publishes.
 
-Why not on push: a registry rejects a republish of an existing version, so every
-merge that did not bump the version would fail the run, and a permanently red
-master teaches everyone to ignore it. Publishing automatically when the version
-_changes_ is closer, but it fires the moment a bump merges — whether or not the
-release was meant to go out then — and offers no way to ship a later commit
-without another bump.
+**There is no publish token in this repository.** Authentication is OIDC trusted
+publishing: npm trusts this workflow, in this repository, running in the `npm`
+environment, and hands it a short-lived credential scoped to one package and one
+run. A leaked repository secret is not a failure mode if the secret does not
+exist.
 
 To release:
 
 1. Bump `version` in `package.json` (its own PR, so the release has a reviewable
    commit).
-2. Actions → **Publish** → Run workflow. Leave **dry_run** checked for the first
-   run: it builds, packs, verifies the tarball and smoke tests the packed MCP
-   server without publishing.
-3. Re-run with **dry_run** unchecked to publish. The run also creates the `vX.Y.Z`
-   tag and a GitHub release, so the decision is recorded outside Actions history.
+2. Optionally run Actions → **Publish** manually first. A manual run performs every
+   check — build, tarball verification, and a smoke test of the packed MCP server —
+   and stops before publishing. It cannot ship anything.
+3. Create a GitHub Release tagged `vX.Y.Z`. That publishes.
 
-The run refuses before building if that version already exists in the registry.
+The run refuses if the tag does not match `package.json`, or if that version is
+already on the registry.
 
-**Repository configuration**
+### One-time setup
 
-| Kind     | Name               | Purpose                                                         |
-| -------- | ------------------ | --------------------------------------------------------------- |
-| Variable | `NPM_REGISTRY_URL` | Target registry. Defaults to npmjs if unset.                    |
-| Secret   | `NPM_TOKEN`        | Publish token for that registry. The run fails early if absent. |
+On npmjs.com → package → Settings → Trusted publishers, add:
 
-The registry lives in a variable rather than `package.json` so the same workflow
-can target a private registry or npmjs without a code change, and so nothing in
-the repo hardcodes where releases go.
+| Field             | Value          |
+| ----------------- | -------------- |
+| Organization/user | `mohnishbasha` |
+| Repository        | `sepia`        |
+| Workflow filename | `publish.yml`  |
+| Environment       | `npm`          |
+| Allowed actions   | `npm publish`  |
+
+Then create a GitHub environment named `npm` and restrict it to `v*` tags — that
+protection is the real gate, since the trusted publisher is bound to it.
+
+Requirements, for when something fails confusingly: npm ≥ 11.5.1 and Node ≥
+22.14.0 (the workflow upgrades npm itself and asserts the version), and
+`repository.url` in `package.json` must match the GitHub repository exactly. npm
+does not validate the trusted-publisher config when you save it — mistakes only
+surface as an auth error during a publish.
+
+Publishing to a **private registry** instead would need a token and a registry
+URL; OIDC trusted publishing is an npmjs and PyPI feature, not something a
+self-hosted registry provides.
 
 ## Deploy
 

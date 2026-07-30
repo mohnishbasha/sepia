@@ -90,5 +90,13 @@
     "LICENSE",
     "soul.md",
     "SKILLS.md"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mohnishbasha/sepia.git"
+  },
+  "homepage": "https://github.com/mohnishbasha/sepia#readme",
+  "bugs": {
+    "url": "https://github.com/mohnishbasha/sepia/issues"
+  }
 }
