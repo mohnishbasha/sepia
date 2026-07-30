@@ -1,6 +1,8 @@
 import { createEngine } from '../../engine/index.js';
 import type { EngineOptions } from '../../engine/index.js';
 import { createAgent as createAgentImpl } from '../../agent/index.js';
+import { dispatchBatch, parseBatch } from '../../actions/index.js';
+import type { BatchResult, TypedAction } from '../../actions/index.js';
 import type { SepiaConfig } from '../../config/index.js';
 import type {
   CompactView,
@@ -16,6 +18,8 @@ import type {
 import type { RunTrace } from '../../agent/index.js';
 
 export { mergeConfig } from '../../config/index.js';
+
+export type { BatchResult, TypedAction };
 
 export type {
   SepiaConfig,
@@ -42,6 +46,12 @@ export interface SepiaSession {
   press: (key: string) => Promise<ActionResult>;
   read: (handle: string) => Promise<ReadResult>;
   text: (opts?: { maxChars?: number }) => Promise<TextResult>;
+  /**
+   * Run a plan of handle-based steps without a model call per step (#29). Each
+   * step still passes the confidence gate, so a page that shifts mid-plan fails
+   * closed on the affected step.
+   */
+  batch: (steps: unknown, opts?: { continueOnError?: boolean }) => Promise<BatchResult>;
   screenshot: (opts?: { path?: string; fullPage?: boolean }) => Promise<ScreenshotResult>;
   wait: (condition: WaitConditionType, timeoutMs?: number) => Promise<WaitResult>;
   open: (url: string) => Promise<ActionResult>;
@@ -86,6 +96,7 @@ export async function createSession(config: SepiaConfig): Promise<SepiaSession> 
     press: (key) => engine.press(key),
     read: (handle) => engine.read(handle),
     text: (textOpts) => engine.text(textOpts),
+    batch: (steps, batchOpts) => dispatchBatch(parseBatch(steps), engine, batchOpts),
     screenshot: (shotOpts) => engine.screenshot(shotOpts),
     wait: (condition, timeoutMs) => engine.wait(condition, timeoutMs),
     open: (url) => engine.open(url),

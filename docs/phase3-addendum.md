@@ -237,6 +237,7 @@ documentation. Every item below is test-first with a numbered AC.
 | AC-A5  | `parseAction()` validates required fields and field types                 | `tests/contract/action-validation.test.ts`   |
 | AC-A6  | `screenshot` capture across engine, action enum, SDK, MCP                 | `tests/integration/screenshot.test.ts`       |
 | AC-A7  | Page prose is retrievable via `text` across engine, action enum, SDK, MCP | `tests/integration/page-text.test.ts`        |
+| AC-A8  | A decided plan runs in one call, each step still gated                    | `tests/integration/action-batch.test.ts`     |
 | AC-R6  | N identically-named same-role elements get N distinct handles             | `tests/integration/list-handles.test.ts`     |
 | AC-R7  | Acting on a handle hits that element, not the first role+name match       | `tests/integration/list-handles.test.ts`     |
 | AC-R8  | Bounded settle on never-idle pages; handle map is pruned                  | `tests/integration/settle-budget.test.ts`    |
