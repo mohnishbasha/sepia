@@ -213,9 +213,13 @@ sepia mcp          # after `make cli-link`
 Once published, a host can use the package directly without cloning:
 
 ```bash
-npm install -g sepia --registry <your-registry>   # or scope it in .npmrc
+npm install -g sepia-browser
 sepia mcp
 ```
+
+The package is `sepia-browser` because plain `sepia` on npm is taken by an
+unrelated module from 2013. The **command** is still `sepia` — `bin` is
+independent of the package name, so nothing about using it changes.
 
 Sepia drives a real Chromium and does not bundle one, and installing the package
 does not fetch it. Run this once:
@@ -330,7 +334,8 @@ already on the registry.
 
 ### One-time setup
 
-On npmjs.com → package → Settings → Trusted publishers, add:
+Publish the first version, or reserve the name, from an account you control —
+then on npmjs.com → package → Settings → Trusted publishers, add:
 
 | Field             | Value          |
 | ----------------- | -------------- |

@@ -36,8 +36,17 @@ function packageVersion(): string {
   const require = createRequire(import.meta.url);
   for (const path of ['../../package.json', '../../../package.json']) {
     try {
-      const pkg = require(path) as { name?: string; version?: string };
-      if (pkg.name === 'sepia' && typeof pkg.version === 'string') return pkg.version;
+      const pkg = require(path) as {
+        version?: string;
+        bin?: Record<string, string>;
+      };
+      // Identified by shape, not by name. This used to require `name === 'sepia'`,
+      // and renaming the package to `sepia-browser` — because plain `sepia` is
+      // taken on npm — made every candidate fail silently and the server report
+      // 0.0.0. A structural check survives the next rename too.
+      if (typeof pkg.version === 'string' && pkg.bin?.['sepia'] !== undefined) {
+        return pkg.version;
+      }
     } catch {
       // try the next candidate
     }

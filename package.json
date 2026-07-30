@@ -1,5 +1,5 @@
 {
-  "name": "sepia",
+  "name": "sepia-browser",
   "version": "0.2.0",
   "description": "An open-source secure AI browser engine",
   "type": "module",
@@ -98,5 +98,14 @@
   "homepage": "https://github.com/mohnishbasha/sepia#readme",
   "bugs": {
     "url": "https://github.com/mohnishbasha/sepia/issues"
-  }
+  },
+  "keywords": [
+    "mcp",
+    "browser",
+    "accessibility-tree",
+    "agent",
+    "playwright",
+    "llm",
+    "automation"
+  ]
 }
