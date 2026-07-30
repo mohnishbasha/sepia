@@ -90,7 +90,8 @@ function renderView(view: CompactView): string {
     const indent = '  '.repeat(n.indent);
     const handle = n.handle ? `[${n.handle}] ` : '';
     const value = n.value ? ` "${n.value}"` : '';
-    lines.push(`${indent}${handle}${n.role} "${n.name}"${value}`);
+    const context = n.context ? ` (${n.context})` : '';
+    lines.push(`${indent}${handle}${n.role} "${n.name}"${value}${context}`);
   }
   return lines.join('\n');
 }
@@ -256,6 +257,10 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
             role: z.string(),
             name: z.string(),
             value: z.string().optional(),
+            context: z
+              .string()
+              .optional()
+              .describe('Nearby text distinguishing controls that share a name'),
           }),
         ),
       },
@@ -280,6 +285,7 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
               role: n.role,
               name: n.name,
               ...(n.value !== undefined ? { value: n.value } : {}),
+              ...(n.context !== undefined ? { context: n.context } : {}),
             })),
           },
         };

@@ -206,6 +206,12 @@ export function redactCompactView(view: CompactView): CompactView {
       }
       next.name = redactSecrets(next.name).redacted;
 
+      // The nearby label is lifted straight off the page (issue #3), so it is
+      // page content like any other and gets the same pass.
+      if (next.context !== undefined) {
+        next.context = redactSecrets(next.context).redacted;
+      }
+
       return next;
     }),
   };

@@ -127,14 +127,98 @@ function buildState(node: AXSnapshot): NodeState | undefined {
 }
 
 /**
+ * Context candidates for each emitted node, keyed by identity. Kept beside the
+ * walk rather than on CompactNode because most nodes never need one, and the
+ * decision requires seeing the whole page.
+ */
+const candidatesByNode = new WeakMap<CompactNode, string[]>();
+
+/** Longest context we will attach; enough to identify a row, not a paragraph. */
+const MAX_CONTEXT_CHARS = 48;
+
+/**
+ * An ancestor label is only trustworthy if it is short.
+ *
+ * An explicit `aria-label` ("Toolbar", "Row actions") is a deliberate name and
+ * identifies its subtree. A long ancestor name is almost always a *computed*
+ * one — the accessibility tree concatenating every descendant's text — which
+ * says nothing specific and reads as garbage once truncated. Sibling text has
+ * no such problem, so only ancestors are held to this limit.
+ */
+const MAX_ANCESTOR_LABEL_CHARS = 40;
+
+/** Collapse whitespace and trim, so a label reads as one clean phrase. */
+function tidy(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Is this string worth spending tokens on?
+ *
+ * Real pages surround links with divider punctuation and one-word scraps —
+ * "|", "by", "·" — which identify nothing. A label that carries no words is
+ * worse than no label: it costs tokens and invites the model to believe it has
+ * disambiguated when it has not.
+ */
+function isUsefulContext(text: string): boolean {
+  const words = text.match(/[\p{L}\p{N}]+/gu) ?? [];
+  const letters = words.join('');
+  return letters.length >= 4 && words.some((w) => w.length >= 3);
+}
+
+/**
+ * Text from a node's siblings that could identify it — the "Item 3" sitting
+ * next to a "Delete" button inside the same list row. Text before the node is
+ * preferred, since that is how rows are usually written.
+ */
+function siblingText(siblings: AXSnapshot[], index: number): string {
+  // Bullets and numbering are decoration, not identity.
+  const DECORATIVE = new Set(['ListMarker', 'listmarker', 'image', 'img']);
+  const textOf = (n: AXSnapshot): string =>
+    !INTERACTIVE_ROLES.has(n.role) && !hasInteractiveDescendant(n) && !DECORATIVE.has(n.role)
+      ? tidy(n.name ?? '')
+      : '';
+
+  const before = siblings.slice(0, index).map(textOf).filter(Boolean);
+  const after = siblings
+    .slice(index + 1)
+    .map(textOf)
+    .filter(Boolean);
+  return [...before, ...after].join(' ');
+}
+
+/**
+ * Candidate labels for a node, nearest first: its siblings' text, then the
+ * names of its ancestors. The first one that is not just a repeat of the
+ * control's own name gets used.
+ */
+function contextCandidates(parents: AXSnapshot[], siblings: AXSnapshot[], index: number): string[] {
+  const out: string[] = [];
+  const sib = siblingText(siblings, index);
+  if (sib !== '') out.push(sib);
+  for (let i = parents.length - 1; i >= 0; i--) {
+    const name = tidy(parents[i]?.name ?? '');
+    if (name !== '' && name.length <= MAX_ANCESTOR_LABEL_CHARS) out.push(name);
+  }
+  return out;
+}
+
+/**
  * Walk the AX tree depth-first and produce CompactNode[].
  * counter is a single-element array so it can be mutated by reference.
+ *
+ * `parents` and the sibling list are carried down so an interactive node can
+ * remember what text surrounded it; whether that text is actually emitted is
+ * decided later, once we know which names collide (AC-S8).
  */
 function walkAX(
   node: AXSnapshot,
   depth: number,
   counter: [number],
   verbosity: Verbosity,
+  parents: AXSnapshot[] = [],
+  siblings: AXSnapshot[] = [],
+  index = 0,
 ): CompactNode[] {
   const results: CompactNode[] = [];
 
@@ -169,12 +253,22 @@ function walkAX(
 
     if (node.frameId !== undefined) compactNode.frameId = node.frameId;
 
+    candidatesByNode.set(compactNode, contextCandidates(parents, siblings, index));
+
     results.push(compactNode);
 
     // Walk children
     if (node.children) {
       for (const child of node.children) {
-        const childNodes = walkAX(child, depth + 1, counter, verbosity);
+        const childNodes = walkAX(
+          child,
+          depth + 1,
+          counter,
+          verbosity,
+          [...parents, node],
+          node.children ?? [],
+          node.children?.indexOf(child) ?? 0,
+        );
         results.push(...childNodes);
       }
     }
@@ -197,7 +291,15 @@ function walkAX(
       // Walk children
       if (node.children) {
         for (const child of node.children) {
-          const childNodes = walkAX(child, depth + 1, counter, verbosity);
+          const childNodes = walkAX(
+            child,
+            depth + 1,
+            counter,
+            verbosity,
+            [...parents, node],
+            node.children ?? [],
+            node.children?.indexOf(child) ?? 0,
+          );
           results.push(...childNodes);
         }
       }
@@ -207,7 +309,15 @@ function walkAX(
     if (hasInteractiveDescendant(node)) {
       if (node.children) {
         for (const child of node.children) {
-          const childNodes = walkAX(child, depth, counter, verbosity);
+          const childNodes = walkAX(
+            child,
+            depth,
+            counter,
+            verbosity,
+            [...parents, node],
+            node.children ?? [],
+            node.children?.indexOf(child) ?? 0,
+          );
           results.push(...childNodes);
         }
       }
@@ -221,12 +331,18 @@ function walkAX(
     if (name !== '') {
       results.push({ role, name, indent: depth });
     }
-    {
-      if (node.children) {
-        for (const child of node.children) {
-          const childNodes = walkAX(child, depth + 1, counter, verbosity);
-          results.push(...childNodes);
-        }
+    if (node.children) {
+      for (const child of node.children) {
+        const childNodes = walkAX(
+          child,
+          depth + 1,
+          counter,
+          verbosity,
+          [...parents, node],
+          node.children,
+          node.children.indexOf(child),
+        );
+        results.push(...childNodes);
       }
     }
   } else {
@@ -236,7 +352,15 @@ function walkAX(
       // Descend without emitting the container
       if (node.children) {
         for (const child of node.children) {
-          const childNodes = walkAX(child, depth, counter, verbosity);
+          const childNodes = walkAX(
+            child,
+            depth,
+            counter,
+            verbosity,
+            [...parents, node],
+            node.children ?? [],
+            node.children?.indexOf(child) ?? 0,
+          );
           results.push(...childNodes);
         }
       }
@@ -252,7 +376,15 @@ function walkAX(
     } else if (node.children) {
       // Descend regardless
       for (const child of node.children) {
-        const childNodes = walkAX(child, depth, counter, verbosity);
+        const childNodes = walkAX(
+          child,
+          depth,
+          counter,
+          verbosity,
+          [...parents, node],
+          node.children ?? [],
+          node.children?.indexOf(child) ?? 0,
+        );
         results.push(...childNodes);
       }
     }
@@ -314,6 +446,59 @@ function domFallbackWalk(
 }
 
 /**
+ * Attach disambiguating context, but only where it earns its tokens (AC-S8).
+ *
+ * A control whose role+name is already unique on the page needs nothing. Where
+ * several share both, each gets the nearest surrounding text that is not just a
+ * repeat of its own name — the row label, the section, the toolbar it sits in.
+ * Nodes with nothing useful nearby are left alone rather than given a made-up
+ * label; they remain separately addressable by handle.
+ */
+function attachContext(nodes: CompactNode[]): void {
+  const key = (n: CompactNode): string => `${n.role}\u0000${n.name.toLowerCase().trim()}`;
+
+  const counts = new Map<string, number>();
+  for (const n of nodes) {
+    if (n.handle === undefined) continue;
+    counts.set(key(n), (counts.get(key(n)) ?? 0) + 1);
+  }
+
+  // Pick a candidate per colliding node, grouped so the choice can be checked.
+  const groups = new Map<string, Array<{ node: CompactNode; label: string }>>();
+
+  for (const n of nodes) {
+    if (n.handle === undefined) continue;
+    if ((counts.get(key(n)) ?? 0) < 2) continue;
+
+    const own = n.name.toLowerCase().trim();
+    const chosen = (candidatesByNode.get(n) ?? []).find(
+      (c) => c !== '' && c.toLowerCase().trim() !== own && isUsefulContext(c),
+    );
+    if (chosen === undefined) continue;
+
+    const label =
+      chosen.length > MAX_CONTEXT_CHARS ? `${chosen.slice(0, MAX_CONTEXT_CHARS - 1)}…` : chosen;
+    const bucket = groups.get(key(n)) ?? [];
+    bucket.push({ node: n, label });
+    groups.set(key(n), bucket);
+  }
+
+  // Only keep labels that tell members of a group apart. A label shared by every
+  // "Delete" on the page — a section heading, a site name — is true of all of
+  // them and separates none, so it is pure cost and a false reassurance that the
+  // choice has been narrowed.
+  //
+  // A member with no label counts as its own identity: when one button is
+  // labelled "Toolbar" and the rest are not, that label is still doing work.
+  for (const [groupKey, bucket] of groups) {
+    const unlabelled = (counts.get(groupKey) ?? 0) - bucket.length;
+    const identities = new Set(bucket.map((b) => b.label)).size + (unlabelled > 0 ? 1 : 0);
+    if (identities < 2) continue;
+    for (const { node, label } of bucket) node.context = label;
+  }
+}
+
+/**
  * Serialize an AX snapshot into a CompactView.
  *
  * Pure and deterministic: given the same inputs, always returns the same output.
@@ -350,13 +535,16 @@ export function serialize(
     filteredNodes = [...filteredNodes, ...fallbackNodes];
   }
 
+  attachContext(filteredNodes);
+
   // Compute token count
   const outlineText = filteredNodes
     .map((n) => {
       const indent = '  '.repeat(n.indent);
       const handleStr = n.handle ? `[${n.handle}] ` : '';
       const valueStr = n.value ? ` value="${n.value}"` : '';
-      return `${indent}${handleStr}${n.role} "${n.name}"${valueStr}`;
+      const contextStr = n.context ? ` (${n.context})` : '';
+      return `${indent}${handleStr}${n.role} "${n.name}"${valueStr}${contextStr}`;
     })
     .join('\n');
 
