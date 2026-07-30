@@ -69,3 +69,38 @@ describe('AC-P5 — secret values never enter the compact view', () => {
     expect(redactCompactView(view).nodes[0]?.value).toBeUndefined();
   });
 });
+
+describe('AC-P5 — the nearby label is page text too', () => {
+  // `context` (issue #3) carries text lifted from around a control so colliding
+  // controls can be told apart. It is page content on its way to the model like
+  // any other, and it was added after this redaction pass was written — so it
+  // travelled unredacted. A row showing an API key beside a "Copy" button is
+  // exactly the shape that produces one.
+  it('redacts a credential appearing in the nearby label', () => {
+    const view = viewWith([
+      {
+        handle: 'e1',
+        role: 'button',
+        name: 'Copy',
+        indent: 0,
+        context: 'Live key sk-proj-ABCDEF1234567890',
+      },
+    ]);
+
+    expect(redactCompactView(view).nodes[0]?.context).not.toContain('sk-proj-ABCDEF1234567890');
+  });
+
+  it('leaves an ordinary label alone', () => {
+    const view = viewWith([
+      { handle: 'e1', role: 'button', name: 'Delete', indent: 0, context: 'Item 3' },
+    ]);
+
+    expect(redactCompactView(view).nodes[0]?.context).toBe('Item 3');
+  });
+
+  it('leaves a node with no label untouched', () => {
+    const view = viewWith([{ handle: 'e1', role: 'button', name: 'Delete', indent: 0 }]);
+
+    expect(redactCompactView(view).nodes[0]?.context).toBeUndefined();
+  });
+});
