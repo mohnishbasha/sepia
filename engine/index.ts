@@ -593,6 +593,10 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
     page = target;
     cdp = null;
     clearHandleMap(handleMap);
+    // Frames belong to the page that owns them. Nothing can reach a stale entry
+    // today — the handles that would name one are gone with the map — but a
+    // locator rooted in a dead frame is not a failure worth leaving available.
+    framesById = new Map<string, Frame>();
     try {
       lastOrigin = new URL(target.url()).origin;
     } catch {
