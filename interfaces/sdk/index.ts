@@ -36,7 +36,7 @@ export type {
 };
 
 export interface SepiaSession {
-  observe: (opts?: { verbosity?: Verbosity }) => Promise<CompactView>;
+  observe: (opts?: { verbosity?: Verbosity; maxTokens?: number }) => Promise<CompactView>;
   click: (handle: string) => Promise<ActionResult>;
   type: (handle: string, text: string, opts?: { submit?: boolean }) => Promise<ActionResult>;
   select: (handle: string, option: string) => Promise<ActionResult>;

@@ -246,11 +246,21 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
           .enum(['minimal', 'standard', 'full'])
           .optional()
           .describe('minimal = interactive only; standard = default; full = all text'),
+        maxTokens: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe(
+            'Cap the outline at this many tokens. Nodes are dropped from the end and ' +
+              'the view says how many — use this when a page is larger than your output limit.',
+          ),
       },
       outputSchema: {
         url: z.string(),
         title: z.string(),
         tokenCount: z.number(),
+        truncated: z.boolean().optional().describe('Nodes were dropped to fit maxTokens'),
         nodes: z.array(
           z.object({
             handle: z.string().optional(),
@@ -266,20 +276,22 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
       },
       annotations: READS,
     },
-    async ({ verbosity }) =>
+    async ({ verbosity, maxTokens }) =>
       withEngine(async (e) => {
         // The host is an LLM context like any other, so the same redaction the
         // agent loop applies must apply here — otherwise MCP is the hole in the
         // "secrets never enter LLM context" invariant.
-        const view = redactCompactView(
-          await e.observe(verbosity !== undefined ? { verbosity } : {}),
-        );
+        const observeOpts: { verbosity?: 'minimal' | 'standard' | 'full'; maxTokens?: number } = {};
+        if (verbosity !== undefined) observeOpts.verbosity = verbosity;
+        if (maxTokens !== undefined) observeOpts.maxTokens = maxTokens;
+        const view = redactCompactView(await e.observe(observeOpts));
         return {
           content: [{ type: 'text', text: renderView(view) }],
           structuredContent: {
             url: view.url,
             title: view.title,
             tokenCount: view.tokenCount,
+            ...(view.truncated === true ? { truncated: true } : {}),
             nodes: view.nodes.map((n) => ({
               ...(n.handle !== undefined ? { handle: n.handle } : {}),
               role: n.role,
