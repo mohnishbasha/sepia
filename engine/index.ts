@@ -79,7 +79,11 @@ export interface EngineOptions {
 
 export interface SepiaEngine {
   open: (url: string) => Promise<ActionResult>;
-  observe: (opts?: { verbosity?: 'minimal' | 'standard' | 'full' }) => Promise<CompactView>;
+  observe: (opts?: {
+    verbosity?: 'minimal' | 'standard' | 'full';
+    /** Cap the returned view at this many tokens; it says so when it trims (AC-S11). */
+    maxTokens?: number;
+  }) => Promise<CompactView>;
   click: (handle: string) => Promise<ActionResult>;
   type: (handle: string, text: string, opts?: { submit?: boolean }) => Promise<ActionResult>;
   select: (handle: string, option: string) => Promise<ActionResult>;
@@ -793,15 +797,24 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
 
     async observe(observeOpts?: {
       verbosity?: 'minimal' | 'standard' | 'full';
+      maxTokens?: number;
     }): Promise<CompactView> {
       await settle();
       const snap = await axSnapshot();
-      const serOpts: { verbosity?: 'minimal' | 'standard' | 'full'; url: string; title: string } = {
+      const serOpts: {
+        verbosity?: 'minimal' | 'standard' | 'full';
+        maxTokens?: number;
+        url: string;
+        title: string;
+      } = {
         url: page.url(),
         title: await page.title(),
       };
       if (observeOpts?.verbosity !== undefined) {
         serOpts.verbosity = observeOpts.verbosity;
+      }
+      if (observeOpts?.maxTokens !== undefined) {
+        serOpts.maxTokens = observeOpts.maxTokens;
       }
       const view = serialize(snap, null, serOpts);
       const processed = processCompactView(view, handleMap);

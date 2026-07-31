@@ -34,6 +34,12 @@ export interface AXSnapshot {
 
 export interface SerializerOptions {
   verbosity?: Verbosity;
+  /**
+   * Cap on the returned view, in cl100k tokens. Nodes are dropped from the end
+   * until the outline fits and the view says so (AC-S11). Absent, zero or
+   * negative means no budget.
+   */
+  maxTokens?: number;
   url?: string;
   title?: string;
 }
@@ -537,27 +543,93 @@ export function serialize(
 
   attachContext(filteredNodes);
 
-  // Compute token count
-  const outlineText = filteredNodes
-    .map((n) => {
-      const indent = '  '.repeat(n.indent);
-      const handleStr = n.handle ? `[${n.handle}] ` : '';
-      const valueStr = n.value ? ` value="${n.value}"` : '';
-      const contextStr = n.context ? ` (${n.context})` : '';
-      return `${indent}${handleStr}${n.role} "${n.name}"${valueStr}${contextStr}`;
-    })
-    .join('\n');
-
-  const tokenCount = estimateTokens(outlineText);
+  const budgeted = applyTokenBudget(filteredNodes, opts?.maxTokens);
 
   return {
     url,
     title,
     verbosity,
-    tokenCount,
+    tokenCount: budgeted.tokenCount,
     timestampMs: Date.now(),
-    nodes: filteredNodes,
+    nodes: budgeted.nodes,
+    truncated: budgeted.dropped > 0,
+    ...(budgeted.dropped > 0 ? { droppedNodes: budgeted.dropped } : {}),
   };
+}
+
+/** One outline line, exactly as the token count and the formatters render it. */
+function renderLine(n: CompactNode): string {
+  const indent = '  '.repeat(n.indent);
+  const handleStr = n.handle ? `[${n.handle}] ` : '';
+  const valueStr = n.value ? ` value="${n.value}"` : '';
+  const contextStr = n.context ? ` (${n.context})` : '';
+  return `${indent}${handleStr}${n.role} "${n.name}"${valueStr}${contextStr}`;
+}
+
+function countFor(nodes: CompactNode[]): number {
+  return estimateTokens(nodes.map(renderLine).join('\n'));
+}
+
+/**
+ * Trim the view to a token budget, keeping the start of the document (AC-S11).
+ *
+ * Dropping from the end preserves reading order and keeps the part of a page a
+ * caller is most likely to want. The alternative — letting the host truncate —
+ * cuts at an arbitrary byte with no notice, which is how an outline silently
+ * loses half its handles.
+ *
+ * The notice is a node, not just metadata, because the model reads the outline.
+ * Without it a truncated page is indistinguishable from a short one, and an
+ * agent concludes the thing it was looking for is not there.
+ *
+ * Binary search rather than a linear walk: token counting is the expensive part
+ * and BPE is not additive across lines, so each candidate prefix is counted for
+ * real instead of summed from per-line estimates.
+ */
+function applyTokenBudget(
+  nodes: CompactNode[],
+  maxTokens: number | undefined,
+): { nodes: CompactNode[]; tokenCount: number; dropped: number } {
+  const full = countFor(nodes);
+
+  const budgetRequested = maxTokens !== undefined && Number.isFinite(maxTokens) && maxTokens > 0;
+  if (!budgetRequested || full <= (maxTokens as number)) {
+    return { nodes, tokenCount: full, dropped: 0 };
+  }
+  const budget = maxTokens as number;
+
+  const notice = (dropped: number): CompactNode => ({
+    role: 'note',
+    name: `[${String(dropped)} of ${String(nodes.length)} nodes omitted to fit maxTokens=${String(budget)}]`,
+    indent: 0,
+  });
+
+  // Largest prefix that still fits once the notice is accounted for.
+  let low = 0;
+  let high = nodes.length;
+  while (low < high) {
+    const mid = Math.floor((low + high + 1) / 2);
+    const candidate = [...nodes.slice(0, mid), notice(nodes.length - mid)];
+    if (countFor(candidate) <= budget) {
+      low = mid;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  const kept = nodes.slice(0, low);
+  const dropped = nodes.length - low;
+  const withNotice = [...kept, notice(dropped)];
+  const withNoticeCount = countFor(withNotice);
+
+  // A budget too small for even the notice: return the notice alone rather than
+  // an empty view that looks like a page with nothing on it.
+  if (low === 0 && withNoticeCount > budget) {
+    const alone = [notice(nodes.length)];
+    return { nodes: alone, tokenCount: countFor(alone), dropped: nodes.length };
+  }
+
+  return { nodes: withNotice, tokenCount: withNoticeCount, dropped };
 }
 
 // Lazily-resolved cl100k_base encoder. `undefined` = not yet attempted,

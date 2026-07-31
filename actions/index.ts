@@ -85,6 +85,7 @@ export interface TypedAction {
   path?: string;
   fullPage?: boolean;
   maxChars?: number;
+  maxTokens?: number;
   condition?: WaitConditionType;
   timeoutMs?: number;
   tabId?: string;
@@ -214,6 +215,7 @@ export function parseAction(raw: unknown): TypedAction {
       if (verbosity !== undefined && !VERBOSITY_VALUES.has(String(verbosity))) {
         throw new Error(`${action} verbosity must be minimal, standard, or full`);
       }
+      optionalNumber(obj, 'maxTokens', action);
       break;
     }
 
@@ -417,8 +419,9 @@ export async function dispatch(
     }
 
     case 'observe': {
-      const obsOpts: { verbosity?: 'minimal' | 'standard' | 'full' } = {};
+      const obsOpts: { verbosity?: 'minimal' | 'standard' | 'full'; maxTokens?: number } = {};
       if (action.verbosity !== undefined) obsOpts.verbosity = action.verbosity;
+      if (action.maxTokens !== undefined) obsOpts.maxTokens = action.maxTokens;
       return engine.observe(obsOpts);
     }
 
