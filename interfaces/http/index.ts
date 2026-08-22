@@ -176,6 +176,7 @@ export function startServer(opts: ServeOptions = {}): Server {
   let inflight = 0;
   let totalRequests = 0;
   let totalErrors = 0;
+  let totalUnauthorized = 0;
   const startMs = Date.now();
 
   function checkAuth(req: IncomingMessage, res: ServerResponse): boolean {
@@ -184,6 +185,11 @@ export function startServer(opts: ServeOptions = {}): Server {
     if (typeof auth === 'string' && auth.startsWith('Bearer ')) {
       if (tokenMatches(auth.slice('Bearer '.length), serverApiKey)) return true;
     }
+    // Counted separately (AC-I1): a rejected request never ran the agent, so
+    // it belongs in neither totalRequests (accepted requests) nor totalErrors
+    // (failures of processed runs). Keeping it separate makes credential
+    // stuffing visible on /metrics without inflating error-rate alerts.
+    totalUnauthorized++;
     json(res, 401, { ok: false, error: 'UNAUTHORIZED' });
     return false;
   }
@@ -204,6 +210,7 @@ export function startServer(opts: ServeOptions = {}): Server {
         maxConcurrent,
         totalRequests,
         totalErrors,
+        totalUnauthorized,
       });
       return;
     }

@@ -558,6 +558,12 @@ export function createAgent(config: SepiaConfig): SepiaAgent;
 | AC-P3 | No cross-profile data bleed                      | `test-leak`: run two concurrent sessions; assert profile A's cookies/storage absent from profile B's context                        |
 | AC-P4 | Secret redaction in logs                         | Unit test: action with credential; assert log output contains `[REDACTED]` in place of secret                                       |
 
+### AC-Interfaces (validates FR-54–FR-56)
+
+| AC    | Criterion                                                                                                                                                                                  | Test                                                                                                                                                                                      |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC-I1 | Authentication rejections on `POST /run` are counted as `totalUnauthorized` on `/metrics`; rejected requests stay out of `totalRequests`/`totalErrors`, which count accepted requests only | Integration test: N requests rejected by `checkAuth()` (missing or wrong bearer token), then `GET /metrics`; assert `totalUnauthorized === N`, `totalRequests === 0`, `totalErrors === 0` |
+
 ---
 
 ## 7. Architecture

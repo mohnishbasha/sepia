@@ -432,3 +432,33 @@ opened, a CAPTCHA it keeps clicking) re-issued the same action until
 after three identical no-ops with an honest `unable` outcome and a diagnostic
 `answer`, pairing with issue #5's `unable` path; CLI/HTTP callers see
 `exit 1` / HTTP `422` with zero caller-side changes.
+
+---
+
+## 12. Issue #19 — `/metrics` does not count authentication failures
+
+### New acceptance criteria
+
+| AC    | Description                                                                                                                                   | Where                                         |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| AC-I1 | Auth-rejected requests to `POST /run` increment `totalUnauthorized` on `/metrics`; `totalRequests`/`totalErrors` count accepted requests only | `tests/integration/http-metrics-auth.test.ts` |
+
+### Changes made
+
+- **`interfaces/http/index.ts`** — new `totalUnauthorized` counter,
+  incremented on every `checkAuth()` rejection before the 401 is written, and
+  exposed in the `GET /metrics` payload alongside `totalRequests` and
+  `totalErrors`.
+- **Semantics decision:** auth-rejected requests deliberately do NOT count
+  toward `totalRequests` or `totalErrors`. Those counters keep their existing
+  meaning — accepted requests, and failures of processed runs — so existing
+  dashboards and error-rate alerts are unaffected, and credential-stuffing
+  traffic cannot pollute either signal. The issue asked for a separate
+  counter; it stays fully separate.
+
+### Defect fixed
+
+`checkAuth()` returned before `totalRequests++`, so a rejected request was
+counted nowhere: three 401s left every counter unchanged (verified in the
+issue), and an operator watching `/metrics` could not see credential stuffing
+against `POST /run`. Rejections are now visible as `totalUnauthorized`.
