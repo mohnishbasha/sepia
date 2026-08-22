@@ -77,6 +77,10 @@ export interface CompactView {
   tokenCount: number;
   timestampMs: number;
   nodes: CompactNode[];
+  /** True when a token budget dropped nodes from the end of the view (AC-S11). */
+  truncated?: boolean;
+  /** How many nodes the budget dropped. Absent when nothing was dropped. */
+  droppedNodes?: number;
 }
 
 // ── Action result types (shared between actions/ and engine/) ────────────────
