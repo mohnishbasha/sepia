@@ -671,8 +671,19 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
             }
           }
 
-          // Append to windowed history
-          history.push(userMsg);
+          // Append to windowed history (issue #7). A prior turn keeps the
+          // model's action verbatim, but its page outline collapses to a
+          // one-line stub: the full outline only matters for the CURRENT
+          // observation, and re-sending every earlier outline made prompt cost
+          // grow quadratically on pages whose structure never changed. The
+          // goal line is dropped from prior turns too — it is invariant for the
+          // whole run and always carried by the current turn's message. With
+          // `maxHistorySteps` windowing the turns, total prompt growth is now
+          // bounded: count-bounded turns × non-repeating outlines.
+          history.push({
+            role: 'user',
+            content: `[page state at step ${stepN}]`,
+          });
           history.push({ role: 'assistant', content: rawContent });
 
           auditor.record({

@@ -477,6 +477,8 @@ Up to `agent.maxRetries` parse attempts are made before aborting the step.
 
 Sepia maintains a rolling conversation window to support multi-step tasks without overflowing small context windows. The last `agent.maxHistorySteps` (default: 10) user/assistant pairs are included in each model call. The system prompt is always present and is not counted against this limit.
 
+Prior turns are also compressed (issue #7): each keeps the model's own action verbatim, but its page outline is replaced by a `[page state at step N]` stub — only the current turn carries the full compact view, since re-sending every earlier outline made prompt cost grow quadratically on pages whose structure never changed. The two mechanisms compose: count-bounded turns × non-repeating outlines = bounded prompt growth.
+
 ### Token estimation
 
 | `tokenEstimation` | Behavior                                                                                                                                    |
