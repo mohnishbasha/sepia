@@ -30,6 +30,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`--headed` flag and `SEPIA_HEADLESS` support on `sepia run`.** Only the HTTP server could flip `browser.headless`; the interactive CLI was pinned to invisible. Precedence strongest-first: explicit `--headed` > `SEPIA_HEADLESS` > configured default. Accepted values are exact: `true`/`1` headless, `false`/`0` headed; unset or empty has no effect; anything else exits 2 with a diagnostic instead of being silently ignored. `sepia mcp` resolves the variable through the same rule (previously only exact `false` counted, so typos failed silent). (AC-I2, AC-I3, AC-I4, AC-I5, AC-I6)
 - **`abort` terminal action.** Typed `{"action":"abort","reason":"..."}` alongside `done`, validated at the boundary (`parseTerminalAction`) and never dispatched to the engine; both system prompts advertise when to use it. (AC-A9)
 - **`screenshot` action** across engine, action enum, SDK, and MCP. Writes a PNG to a path or returns base64; never enters the model context. (AC-A6)
 - **Real tokenizer.** `estimateTokens()` uses `cl100k_base` via `tiktoken` (promoted to a runtime dependency), falling back to `characters / 4` only if it cannot load. Counts run ~35% higher than the old estimate on realistic lines. (AC-S7)

@@ -462,3 +462,50 @@ after three identical no-ops with an honest `unable` outcome and a diagnostic
 counted nowhere: three 401s left every counter unchanged (verified in the
 issue), and an operator watching `/metrics` could not see credential stuffing
 against `POST /run`. Rejections are now visible as `totalUnauthorized`.
+
+---
+
+## 13. Issue #15 — CLI cannot run headed; only the HTTP server can
+
+### New acceptance criteria
+
+| AC    | Description                                                                                                                         | Where                           |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| AC-I2 | Explicit `--headed` forces `browser.headless=false`                                                                                 | `tests/unit/cli-headed.test.ts` |
+| AC-I3 | `SEPIA_HEADLESS` alone works both ways (`false`/`0` headed, `true`/`1` headless); unset or empty means no effect                    | `tests/unit/cli-headed.test.ts` |
+| AC-I4 | Explicit `--headed` beats a contradicting `SEPIA_HEADLESS`                                                                          | `tests/unit/cli-headed.test.ts` |
+| AC-I5 | Neither set → the configured default (`browser.headless: true`) stands                                                              | `tests/unit/cli-headed.test.ts` |
+| AC-I6 | A nonsense `SEPIA_HEADLESS` value fails loudly (stderr diagnostic naming accepted values, exit 2) instead of being silently ignored | `tests/unit/cli-headed.test.ts` |
+
+### Changes made
+
+- **`cli/headless.ts`** — new pure module exporting `parseHeadlessEnv()` and
+  `resolveHeadless()`, the single implementation of the precedence chain and
+  the env-value grammar.
+- **`cli/commands.ts`** — the subcommands moved here from `cli/index.ts`
+  (which is now a thin bin entry) so tests can drive them directly.
+  `runCommand` parses `--headed`, resolves it against `SEPIA_HEADLESS`, and
+  threads the result into the `browser` block of the merged config; the help
+  text documents the flag.
+- **`sepia mcp` now shares the rule.** It previously treated any value other
+  than exactly `false` as headless, so `SEPIA_HEADLESS=0` ran headless and a
+  typo like `flase` failed silently into headless mode. Both now resolve via
+  the same function.
+
+### Semantics decision
+
+Precedence strongest-first: explicit `--headed` flag > `SEPIA_HEADLESS` >
+configured default. Accepted values are exact and case-sensitive:
+`true`/`1` → headless, `false`/`0` → headed; unset or empty has no effect.
+Anything else exits 2 with a diagnostic rather than being ignored — an
+inverted or typoed value silently producing the opposite of what was asked is
+precisely the ambiguity the repo's fail-closed philosophy forbids. The four
+accepted spellings match common dotenv/supervisor conventions without
+admitting case-variant surprises like `False`.
+
+### Defect fixed
+
+`runCommand` never touched the browser config block, so `browser.headless`
+was pinned to its default and every `sepia run` was invisible, while the HTTP
+server's per-request allowlist could flip the same field freely — backwards,
+since interactive mode is where watching matters most.

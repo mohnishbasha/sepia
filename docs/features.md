@@ -389,9 +389,14 @@ Compatible with Claude Code, Codex, Claude Desktop, and any MCP host. See the RE
 ### CLI
 
 ```bash
-sepia run "<goal>" [--model X] [--endpoint Y] [--verbose]
+sepia run "<goal>" [--model X] [--endpoint Y] [--verbose] [--answer-only] [--headed]
 sepia serve [--port N] [--max-concurrent N]
 ```
+
+`--headed` (or `SEPIA_HEADLESS=false|0`) shows the browser window during a run.
+Precedence: explicit `--headed` flag > `SEPIA_HEADLESS` env var > configured
+default (`browser.headless: true`). Unrecognized `SEPIA_HEADLESS` values exit
+with an error rather than being ignored.
 
 ---
 

@@ -162,11 +162,12 @@ Requirements are numbered FR-N. Every FR must trace to at least one acceptance t
 
 ### 2.7 Interfaces
 
-| ID    | Requirement                                                                                                                                                                       |
-| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FR-54 | Expose a local TypeScript SDK (`interfaces/sdk`) with full typed access to the agent, action, and observe APIs.                                                                   |
-| FR-55 | Expose an MCP 2024-11 server (`interfaces/mcp`) with `stdio` transport, implementing `tools/list` and `tools/call` for every action in FR-17–FR-29 plus `observe` and `run_goal`. |
-| FR-56 | Expose a CLI (`sepia run "..."`) that invokes the agent loop with a plain-language goal and prints the structured trace to stdout.                                                |
+| ID    | Requirement                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-54 | Expose a local TypeScript SDK (`interfaces/sdk`) with full typed access to the agent, action, and observe APIs.                                                                                                                                                                                                                                                                             |
+| FR-55 | Expose an MCP 2024-11 server (`interfaces/mcp`) with `stdio` transport, implementing `tools/list` and `tools/call` for every action in FR-17–FR-29 plus `observe` and `run_goal`.                                                                                                                                                                                                           |
+| FR-56 | Expose a CLI (`sepia run "..."`) that invokes the agent loop with a plain-language goal and prints the structured trace to stdout.                                                                                                                                                                                                                                                          |
+| FR-57 | The CLI MUST be able to run the browser visibly. Precedence for `browser.headless`, strongest first: explicit `--headed` flag > `SEPIA_HEADLESS` environment variable > configured default (`browser.headless: true`). `SEPIA_HEADLESS` accepts `true`/`1` (headless) and `false`/`0` (headed); unset or empty has no effect; any other value is an error and MUST NOT be silently ignored. |
 
 ---
 
@@ -558,11 +559,16 @@ export function createAgent(config: SepiaConfig): SepiaAgent;
 | AC-P3 | No cross-profile data bleed                      | `test-leak`: run two concurrent sessions; assert profile A's cookies/storage absent from profile B's context                        |
 | AC-P4 | Secret redaction in logs                         | Unit test: action with credential; assert log output contains `[REDACTED]` in place of secret                                       |
 
-### AC-Interfaces (validates FR-54–FR-56)
+### AC-Interfaces (validates FR-54–FR-57)
 
 | AC    | Criterion                                                                                                                                                                                  | Test                                                                                                                                                                                      |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AC-I1 | Authentication rejections on `POST /run` are counted as `totalUnauthorized` on `/metrics`; rejected requests stay out of `totalRequests`/`totalErrors`, which count accepted requests only | Integration test: N requests rejected by `checkAuth()` (missing or wrong bearer token), then `GET /metrics`; assert `totalUnauthorized === N`, `totalRequests === 0`, `totalErrors === 0` |
+| AC-I2 | An explicit `--headed` flag forces `browser.headless = false`                                                                                                                              | Unit test: `runCommand()` against a mocked agent asserts the merged config carries `browser.headless === false` (`tests/unit/cli-headed.test.ts`)                                         |
+| AC-I3 | `SEPIA_HEADLESS` alone controls headedness in both directions: `false`/`0` → headed, `true`/`1` → headless; unset or empty → no effect                                                     | Unit test: same harness, env-only, both directions plus empty/unset (`tests/unit/cli-headed.test.ts`)                                                                                     |
+| AC-I4 | The explicit `--headed` flag beats a contradicting `SEPIA_HEADLESS`                                                                                                                        | Unit test: `--headed` with `SEPIA_HEADLESS=true`/`1` still yields `browser.headless === false` (`tests/unit/cli-headed.test.ts`)                                                          |
+| AC-I5 | With neither the flag nor the variable set, the configured default (`browser.headless: true`) stands unchanged                                                                             | Unit test: no flag and no env var yields `browser.headless === true` (`tests/unit/cli-headed.test.ts`)                                                                                    |
+| AC-I6 | A nonsense `SEPIA_HEADLESS` value fails loudly — diagnostic on stderr naming accepted values, exit code 2 — instead of being silently ignored                                              | Unit test: invalid value rejects before any agent is created; stderr names the variable and all four accepted values (`tests/unit/cli-headed.test.ts`)                                    |
 
 ---
 
