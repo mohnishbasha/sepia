@@ -11,6 +11,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`/metrics` did not count authentication failures.** `checkAuth()` returned before `totalRequests++`, so rejected requests appeared in neither `totalRequests` nor `totalErrors` — credential stuffing against `POST /run` was invisible to an operator. Rejections now increment a separate `totalUnauthorized` counter exposed via `/metrics`; the existing counters keep their meaning (accepted requests, and failures of processed runs). (AC-I1)
 - **Distinct elements no longer share a handle.** `assignHandle()` reused an existing handle whenever a fuzzy similarity score exceeded 0.85. Elements sharing a role and accessible name within ~4 ordinal positions collapsed together: 20 identical "Delete" buttons produced 5 handles, and handles were not stable across two observations of an unchanged page. Identity is now exact (role + accessible name + stable attributes + ordinal among identically-named same-role siblings). (AC-R6)
 - **Actions hit the element the handle denotes.** Every engine action resolved its target with `getByRole(role, {name}).first()`, so on a list of identically-labelled controls each handle acted on the first match regardless of which was requested. Execution now targets the handle's own ordinal. (AC-R7)
 - **`agent.confidenceThreshold` is enforced.** It was declared in config and read by nothing. `gateHandle()` now refuses to act below it, returning `LOW_CONFIDENCE`. (AC-AG6)
