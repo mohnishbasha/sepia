@@ -159,6 +159,7 @@ Requirements are numbered FR-N. Every FR must trace to at least one acceptance t
 | FR-51 | Emit a structured trace per run: `{goal, steps: [{action, handle, confidence, tokensUsed, latencyMs, result}], totalTokens, totalSteps, outcome}`.                                                                                                                                                                                                                                                                                  |
 | FR-52 | Support concurrent runs: each run MUST use an isolated Chromium profile. No shared state between concurrent runs.                                                                                                                                                                                                                                                                                                                   |
 | FR-53 | Enforce per-run resource budgets: `maxSteps` (default `50`), `maxTokensPerRun` (default `100,000`). Exceed either → terminate run, return structured error.                                                                                                                                                                                                                                                                         |
+| FR-58 | Conversation history per call = system prompt + last `maxHistorySteps` user/assistant pairs + the current turn. A prior turn keeps the model's action verbatim but replaces its page outline with a `[page state at step N]` stub; only the current turn carries the full compact view. Retained content stays inside the data boundary (AC-P5, AC-P7).                                                                             |
 
 ### 2.7 Interfaces
 
@@ -523,12 +524,13 @@ export function createAgent(config: SepiaConfig): SepiaAgent;
 
 ### AC-Agent (validates M3)
 
-| AC     | Criterion                                                                 | Test                                                 |
-| ------ | ------------------------------------------------------------------------- | ---------------------------------------------------- |
-| AC-AG1 | Agent completes UC-1 (login) on a fixture login page                      | E2E integration test against local fixture server    |
-| AC-AG2 | Agent completes UC-3 (fill form) on a fixture form page                   | E2E integration test against local fixture server    |
-| AC-AG3 | Agent stops on budget exhaustion and returns `outcome: 'budget_exceeded'` | Integration test: set `maxSteps=2` on a complex task |
-| AC-AG4 | Agent retries on stale handle, up to `maxRetries`, then stops             | Integration test: synthetic stale-handle fixture     |
+| AC      | Criterion                                                                                                                                                                                                                                                                                                   | Test                                                 |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| AC-AG1  | Agent completes UC-1 (login) on a fixture login page                                                                                                                                                                                                                                                        | E2E integration test against local fixture server    |
+| AC-AG2  | Agent completes UC-3 (fill form) on a fixture form page                                                                                                                                                                                                                                                     | E2E integration test against local fixture server    |
+| AC-AG3  | Agent stops on budget exhaustion and returns `outcome: 'budget_exceeded'`                                                                                                                                                                                                                                   | Integration test: set `maxSteps=2` on a complex task |
+| AC-AG4  | Agent retries on stale handle, up to `maxRetries`, then stops                                                                                                                                                                                                                                               | Integration test: synthetic stale-handle fixture     |
+| AC-AG11 | Prior history turns keep the model's action verbatim with their outline replaced by a `[page state at step N]` stub; only the current turn carries the full compact view; `maxHistorySteps` still truncates; prompt growth on an unchanged page stays flat; retained content stays inside the data boundary | `tests/integration/history-stubs.test.ts`            |
 
 ### AC-Fingerprint (validates M4)
 

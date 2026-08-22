@@ -509,3 +509,44 @@ admitting case-variant surprises like `False`.
 was pinned to its default and every `sepia run` was invisible, while the HTTP
 server's per-request allowlist could flip the same field freely — backwards,
 since interactive mode is where watching matters most.
+
+---
+
+## 14. Issue #7 — conversation history re-sends the full page outline every turn
+
+### New acceptance criteria
+
+| AC      | Description                                                                                                                                                                                                                                                                                                 | Where                                     |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| AC-AG11 | Prior history turns keep the model's action verbatim with their outline replaced by a `[page state at step N]` stub; only the current turn carries the full compact view; `maxHistorySteps` still truncates; prompt growth on an unchanged page stays flat; retained content stays inside the data boundary | `tests/integration/history-stubs.test.ts` |
+
+### Changes made
+
+- **`agent/index.ts`** — when a completed step is appended to history, its
+  user message is rebuilt as `[page state at step N]` instead of storing
+  `Goal + full outline`; the assistant message (the model's own action JSON)
+  is stored verbatim as before. The current turn is unaffected: it is built
+  fresh each step from the live observation and always carries the full
+  redacted/sanitized compact view. The goal line is dropped from prior turns
+  too — it is invariant for the whole run and always present in the current
+  turn's message.
+- **Composition with `maxHistorySteps` (unchanged semantics):** the window
+  still keeps the last N user/assistant pairs; stubbing changes what a pair
+  costs, not how many are kept. Count-bounded turns × non-repeating outlines
+  = bounded prompt growth, instead of the previous quadratic accumulation.
+- **Loop detection (`hashView`) and the data-boundary pipeline
+  (`redactCompactView` → `sanitizeForLLM`) are untouched.** Stubbing strictly
+  reduces exposure: the only page-derived content ever persisted to history is
+  gone outright, so what remains in retained turns (goal placeholder text in
+  the model's own action JSON) was already inside the boundary.
+
+### Defect fixed
+
+Each history entry carried the entire page outline, so turn n re-sent
+everything from turns 1..n-1: measured on a 10-field registration form,
+prompt tokens grew 192 → 3,205 over 13 calls (~24k tokens total, 16.7x) for
+a page whose structure never changed. `maxHistorySteps` bounded the growth
+but only at a level above where most tasks finish. The model needs the
+current page plus a record of what it did — not ten copies of the same form.
+Prior outlines now collapse to one-line stubs while actions stay verbatim,
+cutting unchanged-page prompt cost roughly k×→constant per call.
