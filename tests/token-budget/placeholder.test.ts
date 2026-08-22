@@ -180,11 +180,30 @@ describe('token-budget', () => {
   });
 
   // -------------------------------------------------------------------------
-  // AC-S6 (bonus): minimal verbosity produces fewer nodes than standard
+  // AC-S6: minimal verbosity is strictly smaller than standard wherever a
+  // reduction is possible, and its cuts are defined.
+  //
+  // Issue #18: the old filter kept "nodes with a handle plus headings", which
+  // on many pages is exactly what standard already keeps — both levels produced
+  // byte-identical output on a list page, and the old `<=` assertion passed by
+  // equality without noticing the knob did nothing.
+  //
+  // minimal now keeps handle-bearing nodes only:
+  //   - every content-only node is dropped (headings, labels, cells,
+  //     statuses…). This cannot break disambiguation: a control's `context`
+  //     label is captured during the walk and attached after this filter runs,
+  //     so the surrounding prose node goes while the control's label stays.
+  //   - state that only restates the implicit default (`{enabled: true}`) is
+  //     dropped; non-default state (disabled / checked / required / expanded /
+  //     selected) survives, because it changes what an action means.
+  //   - `value` survives: it is what a user or the model already typed into a
+  //     field; hiding it invites blind re-typing.
+  //   - `context` survives: dropping it reintroduces issue #3 (four identical
+  //     "Delete" buttons become indistinguishable).
   // -------------------------------------------------------------------------
 
-  it('AC-S6: minimal verbosity produces fewer or equal nodes than standard on dashboard fixture', () => {
-    const fixture = loadFixture('dashboard.json');
+  it('AC-S6: minimal strictly reduces the list page where the knob previously did nothing (issue #18)', () => {
+    const fixture = loadFixture('search-results.json');
 
     const standardView = serialize(fixture.axSnapshot, null, {
       url: fixture.url,
@@ -198,7 +217,106 @@ describe('token-budget', () => {
       verbosity: 'minimal',
     });
 
-    expect(minimalView.nodes.length).toBeLessThanOrEqual(standardView.nodes.length);
+    // Before the fix these were byte-identical (8 nodes, 72 tokens each):
+    // every node the page had was either interactive or a heading, so minimal
+    // kept everything standard kept.
+    expect(minimalView.nodes.length).toBeLessThan(standardView.nodes.length);
+    expect(minimalView.tokenCount).toBeLessThan(standardView.tokenCount);
+  });
+
+  it('AC-S6: minimal never exceeds standard anywhere in the corpus', () => {
+    for (const file of FIXTURE_FILES) {
+      const fixture = loadFixture(file);
+
+      const standardView = serialize(fixture.axSnapshot, null, {
+        url: fixture.url,
+        title: fixture.title,
+        verbosity: 'standard',
+      });
+
+      const minimalView = serialize(fixture.axSnapshot, null, {
+        url: fixture.url,
+        title: fixture.title,
+        verbosity: 'minimal',
+      });
+
+      expect(minimalView.nodes.length, file).toBeLessThanOrEqual(standardView.nodes.length);
+      expect(minimalView.tokenCount, file).toBeLessThanOrEqual(standardView.tokenCount);
+    }
+  });
+
+  it('AC-S6: minimal emits handle-bearing nodes only', () => {
+    for (const file of FIXTURE_FILES) {
+      const fixture = loadFixture(file);
+      const minimalView = serialize(fixture.axSnapshot, null, {
+        url: fixture.url,
+        title: fixture.title,
+        verbosity: 'minimal',
+      });
+      const bare = minimalView.nodes.filter((n) => n.handle === undefined);
+      expect(
+        bare.map((n) => `${n.role} "${n.name}"`),
+        file,
+      ).toEqual([]);
+    }
+  });
+
+  it('AC-S6: minimal drops headings and default state but keeps values and meaningful state', () => {
+    const formPage: AXSnapshot = {
+      role: 'WebArea',
+      name: 'Checkout',
+      children: [
+        { role: 'heading', name: 'Checkout' },
+        { role: 'textbox', name: 'Email', value: 'alice@example.com' },
+        { role: 'checkbox', name: 'Save details', checked: true },
+        { role: 'button', name: 'Pay', disabled: true },
+      ],
+    };
+
+    const view = serialize(formPage, null, { verbosity: 'minimal' });
+    const byName = new Map(view.nodes.map((n) => [n.name, n]));
+
+    // Content-only node: gone.
+    expect(byName.has('Checkout')).toBe(false);
+
+    // Typed value survives — hiding it would invite blind re-typing.
+    expect(byName.get('Email')?.value).toBe('alice@example.com');
+
+    // Default-only state (`{enabled: true}`) is stripped…
+    expect(byName.get('Email')?.state).toBeUndefined();
+
+    // …but non-default state survives, because it changes what an action means.
+    expect(byName.get('Save details')?.state).toMatchObject({ checked: true });
+    expect(byName.get('Pay')?.state).toMatchObject({ enabled: false });
+  });
+
+  it('AC-S6: minimal still disambiguates identically-named controls via context', () => {
+    const rows: AXSnapshot = {
+      role: 'WebArea',
+      name: 'Rows',
+      children: [
+        {
+          role: 'list',
+          name: '',
+          children: ['Alpha', 'Beta', 'Gamma', 'Delta'].map((label) => ({
+            role: 'listitem',
+            name: '',
+            children: [
+              { role: 'StaticText', name: label },
+              { role: 'button', name: 'Delete' },
+            ],
+          })),
+        },
+      ],
+    };
+
+    // Both levels must tell the four Delete buttons apart (AC-S8): minimal
+    // drops the prose *nodes*, not the labels attached to the controls.
+    for (const verbosity of ['standard', 'minimal'] as const) {
+      const view = serialize(rows, null, { verbosity });
+      const contexts = view.nodes.filter((n) => n.handle !== undefined).map((n) => n.context);
+      expect(contexts.sort(), verbosity).toEqual(['Alpha', 'Beta', 'Delta', 'Gamma']);
+    }
   });
 
   // -------------------------------------------------------------------------
