@@ -102,6 +102,21 @@ endpoint works — Anthropic, OpenRouter, a local Ollama — since only the base
 and model name change. A local endpoint needs no key; a remote one without a key
 exits with an error rather than failing silently.
 
+### Watching the browser
+
+`sepia run` is headless by default. Pass `--headed` to watch it work:
+
+```bash
+make run ARGS='run "What is the current Node.js LTS version on nodejs.org?" --headed'
+```
+
+`SEPIA_HEADLESS` does the same job for scripts and `.env` files and applies to
+both `run` and `mcp`: `false` or `0` shows the window, `true` or `1` runs
+headless (the default), unset or empty changes nothing. An explicit `--headed`
+flag wins over the variable. Anything else — a typo like `flase` included —
+exits with an error naming the accepted values rather than silently doing the
+opposite of what was asked.
+
 ### CLI — one-shot agent run
 
 ```bash
@@ -273,10 +288,10 @@ when the host disconnects, closes stdin, or signals the process.
 
 **Environment**
 
-| Variable               | Effect                                                           |
-| ---------------------- | ---------------------------------------------------------------- |
-| `SEPIA_HEADLESS=false` | Show the browser window — useful for watching what the host does |
-| `SEPIA_BROWSER_PATH`   | Use a specific Chromium binary                                   |
+| Variable               | Effect                                                                                                                                                                                  |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SEPIA_HEADLESS=false` | Show the browser window — useful for watching what the host does. Accepts `false`/`0` (headed) and `true`/`1` (headless); anything else is an error. Same rule as `sepia run --headed`. |
+| `SEPIA_BROWSER_PATH`   | Use a specific Chromium binary                                                                                                                                                          |
 
 **Known limitation.** Elements that share a role and accessible name are
 indistinguishable in the compact view: a list with six buttons all named
