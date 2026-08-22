@@ -238,6 +238,48 @@ export function parseAction(raw: unknown): TypedAction {
   return obj as unknown as TypedAction;
 }
 
+// ── Terminal actions ─────────────────────────────────────────────────────────
+//
+// `done` and `abort` end the agent run and are never dispatched to the engine.
+// They are recognised by the agent loop (agent/index.ts), not by
+// `parseAction`/`dispatch`, so they stay out of the `ActionName` dispatch enum.
+// `done` signals the goal was achieved; `abort` signals the model concluded the
+// goal is unachievable (issue #5) and carries a `reason`.
+
+export type TerminalActionName = 'done' | 'abort';
+
+export interface TerminalAction {
+  action: TerminalActionName;
+  /** `done`: the run's final answer, surfaced as `RunTrace.answer`. */
+  summary?: string;
+  /** `abort`: why the task could not be completed, surfaced as `RunTrace.answer`. */
+  reason?: string;
+}
+
+export function isTerminalActionName(name: string): name is TerminalActionName {
+  return name === 'done' || name === 'abort';
+}
+
+/**
+ * Validate a terminal action. Terminal actions are never dispatched to the
+ * engine — the agent loop ends the run when one is returned. `summary` and
+ * `reason` are optional; when present they must be strings. An empty terminal
+ * action is still valid and simply ends the run without an answer payload.
+ */
+export function parseTerminalAction(raw: unknown): TerminalAction {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new Error('Action must be an object');
+  }
+  const obj = raw as Record<string, unknown>;
+  const action = obj['action'];
+  if (!isTerminalActionName(String(action))) {
+    throw new Error(`Unknown or invalid terminal action: ${String(action)}`);
+  }
+  optionalString(obj, 'summary', String(action));
+  optionalString(obj, 'reason', String(action));
+  return obj as unknown as TerminalAction;
+}
+
 /**
  * Upper bound on steps in one batch.
  *

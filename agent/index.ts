@@ -1,7 +1,12 @@
 import OpenAI from 'openai';
 import { createEngine } from '../engine/index.js';
 import type { EngineOptions } from '../engine/index.js';
-import { parseAction, dispatch } from '../actions/index.js';
+import {
+  parseAction,
+  dispatch,
+  parseTerminalAction,
+  isTerminalActionName,
+} from '../actions/index.js';
 import type { TypedAction } from '../actions/index.js';
 import {
   createAuditor,
@@ -15,7 +20,7 @@ import {
   createNamedProfile,
 } from '../privacy/index.js';
 import { createLogger } from '../telemetry/index.js';
-import { estimateTokens } from '../serializer/index.js';
+import { estimateTokens, hashView } from '../serializer/index.js';
 import type { ActionResult } from '../types/index.js';
 import type { Outcome } from '../types/index.js';
 import { mergeConfig } from '../config/index.js';
@@ -42,7 +47,11 @@ export interface RunTrace {
   outcome: Outcome;
   totalSteps: number;
   totalTokens: number;
-  /** Final answer from the model's `done` action, when the run reached one. */
+  /**
+   * The model's terminal payload. For `done` this is the final answer (the
+   * task was completed); for `abort` this is the reason the task could not be
+   * completed. Present only when the run reached a terminal action.
+   */
   answer?: string;
   steps: StepTrace[];
 }
@@ -52,25 +61,69 @@ export interface SepiaAgent {
 }
 
 // Default system prompt — tuned for large models (Claude, GPT-4, Gemini).
-const SYSTEM_PROMPT_DEFAULT = `You are a browser automation agent. On each turn you receive the current page state as a compact outline where [e12] are interactive element handles. Respond with exactly one JSON action:
+// Advertisises every dispatchable action except `screenshot`, which stays an
+// operator/SDK artifact (issue #4): its base64 must not enter the model context.
+const SYSTEM_PROMPT_DEFAULT = `You are a browser automation agent. On each turn you receive the current page state as a compact outline where [e12] are interactive element handles. Respond with exactly one JSON action from this set:
 {"action":"click","handle":"e12"}
-{"action":"type","handle":"e13","text":"hello@example.com"}
-{"action":"open","url":"https://example.com"}
+{"action":"type","handle":"e13","text":"hello@example.com","submit":true}
+{"action":"select","handle":"e14","option":"Option value or label"}
+{"action":"check","handle":"e15","checked":true}
+{"action":"hover","handle":"e16"}
+{"action":"scroll","scrollTarget":"down","scrollDistance":500}
+{"action":"press","key":"Enter"}
+{"action":"read","handle":"e17"}
 {"action":"text"}
+{"action":"observe","verbosity":"standard"}
+{"action":"wait","condition":{"type":"url","pattern":"https://example.com"}}
+{"action":"open","url":"https://example.com"}
+{"action":"back"}
+{"action":"forward"}
+{"action":"tabs.new","url":"https://example.com"}
+{"action":"tabs.list"}
+{"action":"tabs.switch","tabId":"t2"}
+{"action":"tabs.close","tabId":"t2"}
 {"action":"done","summary":"Completed the task"}
-The outline lists controls and headings, not article prose. When the answer is in the page's body text, use {"action":"text"} to read it.
-Only use handles that appear in the current page. Never fabricate handles.`;
+{"action":"abort","reason":"I cannot complete this task because ..."}
+Field notes:
+- handle must be an [eNN] shown on the current page; never invent handles.
+- submit, checked, scrollDistance, maxChars, timeoutMs, and tabs.new's url are optional; omit what you do not need.
+- press.key names a key: "Enter", "Tab", "Escape", an arrow key, or a letter.
+- scroll.scrollTarget is "up" or "down"; scrollDistance is in pixels (omit for one viewport).
+- read returns the full text of one element; text returns the whole page (maxChars caps it).
+- observe.verbosity is "minimal", "standard", or "full"; use it to re-fetch the page.
+- wait.condition is one of {"type":"url","pattern":"..."}, {"type":"element","handle":"..."}, {"type":"networkIdle"}.
+- back/forward navigate; tabs.list lists tabs; tabs.switch and tabs.close target a tabId from tabs.list.
+- The outline lists controls and headings, not article prose. When the answer is in the page's body text, use "text" to read it.
+- Use "done" only when the goal has been fully achieved. Use "abort" when the task is impossible, blocked, or unachievable (e.g., missing data, a CAPTCHA you cannot solve, or a paywall) and give a short, specific reason.`;
 
 // Minimal system prompt — shorter and more schema-explicit for SLMs (≤ 7B).
 // Includes a one-shot example to improve JSON output reliability.
+// Advertises the same full action set as the default prompt, in compact form.
 const SYSTEM_PROMPT_MINIMAL = `Browser agent. Output ONE JSON action per turn. Schema:
 {"action":"click","handle":"[eNN]"}
-{"action":"type","handle":"[eNN]","text":"value"}
+{"action":"type","handle":"[eNN]","text":"value","submit":true}
+{"action":"select","handle":"[eNN]","option":"value-or-label"}
+{"action":"check","handle":"[eNN]","checked":true}
+{"action":"hover","handle":"[eNN]"}
+{"action":"scroll","scrollTarget":"down","scrollDistance":500}
+{"action":"press","key":"Enter"}
+{"action":"read","handle":"[eNN]"}
+{"action":"text"}
+{"action":"observe","verbosity":"standard"}
+{"action":"wait","condition":{"type":"url","pattern":"..."}}
 {"action":"open","url":"https://..."}
+{"action":"back"}
+{"action":"forward"}
+{"action":"tabs.new","url":"https://..."}
+{"action":"tabs.list"}
+{"action":"tabs.switch","tabId":"t2"}
+{"action":"tabs.close","tabId":"t2"}
 {"action":"done","summary":"..."}
+{"action":"abort","reason":"..."}
+Use "done" only when the goal is achieved; "abort" when it cannot be completed.
 Rules: use only handles shown on page; never invent handles; output raw JSON only.`;
 
-function selectSystemPrompt(style: SepiaConfig['model']['promptStyle']): string {
+export function selectSystemPrompt(style: SepiaConfig['model']['promptStyle']): string {
   return style === 'minimal' ? SYSTEM_PROMPT_MINIMAL : SYSTEM_PROMPT_DEFAULT;
 }
 
@@ -232,6 +285,15 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
       // Conversation history (excludes system prompt; windowed before each call).
       const history: OpenAI.Chat.ChatCompletionMessageParam[] = [];
 
+      // Loop detection (issue #6, AC-AG10): the same (action, handle) issued
+      // repeatedly against an unchanged view is a no-op loop — the page is not
+      // progressing and the model is re-issuing the identical command. We track
+      // the previous step's key and view hash, count consecutive repeats, and
+      // stop with `unable` once the count reaches the configured threshold.
+      let loopPrevKey: string | undefined;
+      let loopPrevViewHash: string | undefined;
+      let loopRepeatCount = 0;
+
       try {
         for (let stepN = 0; stepN < config.agent.maxSteps; stepN++) {
           const stepStart = Date.now();
@@ -300,6 +362,8 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
           let typedAction: TypedAction | undefined;
           let doneSummary: string | undefined;
           let sawDone = false;
+          let abortReason: string | undefined;
+          let sawAbort = false;
           let rejection: string | undefined;
           let modelCallFailed = false;
 
@@ -365,18 +429,37 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
               }
             }
 
-            // done action — its summary is the run's answer (AC-AG5)
+            // Terminal actions: done or abort. They end the run and are never
+            // dispatched to the engine (AC-AG5, AC-AG9).
             if (
               typeof parsedRaw === 'object' &&
               parsedRaw !== null &&
-              (parsedRaw as Record<string, unknown>)['action'] === 'done'
+              isTerminalActionName(String((parsedRaw as Record<string, unknown>)['action']))
             ) {
-              const summary = (parsedRaw as Record<string, unknown>)['summary'];
-              if (typeof summary === 'string' && summary.trim() !== '') {
-                doneSummary = summary;
+              try {
+                const term = parseTerminalAction(parsedRaw);
+                if (term.action === 'done') {
+                  if (term.summary !== undefined && term.summary.trim() !== '') {
+                    doneSummary = term.summary;
+                  }
+                  sawDone = true;
+                } else {
+                  if (term.reason !== undefined && term.reason.trim() !== '') {
+                    abortReason = term.reason;
+                  }
+                  sawAbort = true;
+                }
+                break;
+              } catch (err) {
+                // A malformed terminal action (e.g. non-string summary/reason)
+                // is rejected like any other bad payload: corrective feedback,
+                // then retry (AC-AG8).
+                rejection = err instanceof Error ? err.message : String(err);
+                if (attempt < config.agent.maxRetries) {
+                  await new Promise<void>((r) => setTimeout(r, backoffMs));
+                }
+                continue;
               }
-              sawDone = true;
-              break;
             }
 
             try {
@@ -408,6 +491,14 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
           if (sawDone) {
             if (doneSummary !== undefined) answer = doneSummary;
             outcome = 'success';
+            break;
+          }
+
+          // The model declared the goal unachievable. Report that honestly
+          // instead of falling through to `success` (issue #5).
+          if (sawAbort) {
+            if (abortReason !== undefined) answer = abortReason;
+            outcome = 'unable';
             break;
           }
 
@@ -539,6 +630,31 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
           if (bailedOnHandle) {
             outcome = 'stale_bail';
             break;
+          }
+
+          // Loop detection (issue #6, AC-AG10): the same (action, handle) issued
+          // repeatedly against an unchanged view is a no-op loop — the page is
+          // not progressing and the model is re-issuing the identical command.
+          // Stop with `unable` instead of burning the step budget.
+          const loopThreshold = config.agent.loopThreshold;
+          if (loopThreshold !== undefined) {
+            const key = `${typedAction.action}\u0000${typedAction.handle ?? ''}`;
+            const viewHash = hashView(view);
+            loopRepeatCount =
+              key === loopPrevKey && viewHash === loopPrevViewHash ? loopRepeatCount + 1 : 1;
+            loopPrevKey = key;
+            loopPrevViewHash = viewHash;
+
+            if (loopRepeatCount >= loopThreshold) {
+              outcome = 'unable';
+              answer =
+                `Loop detected: the action "${typedAction.action}"` +
+                (typedAction.handle !== undefined ? ` on handle ${typedAction.handle}` : '') +
+                ` was issued ${loopRepeatCount} times in a row without the view changing. ` +
+                `The page is not progressing, so the run was stopped. ` +
+                `Try a different handle or a different action to make progress.`;
+              break;
+            }
           }
 
           // Append to windowed history

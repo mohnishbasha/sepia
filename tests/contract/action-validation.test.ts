@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseAction } from '../../actions/index.js';
+import { parseAction, parseTerminalAction, isValidActionName } from '../../actions/index.js';
 
 describe('AC-A5 — required fields are enforced', () => {
   it('rejects click with no handle', () => {
@@ -95,5 +95,56 @@ describe('AC-A5 — valid actions still parse', () => {
 
   it('parses check without an explicit checked flag', () => {
     expect(parseAction({ action: 'check', handle: 'e3' })).toMatchObject({ action: 'check' });
+  });
+});
+
+/**
+ * AC-A9 — terminal actions are validated at the boundary and never dispatched.
+ *
+ * `done` and `abort` end the run; they are recognised by the agent loop rather
+ * than routed through `parseAction`/`dispatch`. `abort` is the typed way for
+ * the model to report "I cannot do this" (issue #5), so it must be validated
+ * like any other action rather than cast.
+ */
+describe('AC-A9 — terminal actions are validated, not dispatched', () => {
+  it('parses abort with a reason', () => {
+    expect(parseTerminalAction({ action: 'abort', reason: 'paywalled' })).toMatchObject({
+      action: 'abort',
+      reason: 'paywalled',
+    });
+  });
+
+  it('parses done with a summary', () => {
+    expect(parseTerminalAction({ action: 'done', summary: 'done' })).toMatchObject({
+      action: 'done',
+      summary: 'done',
+    });
+  });
+
+  it('accepts a terminal action with no payload', () => {
+    expect(parseTerminalAction({ action: 'abort' })).toMatchObject({ action: 'abort' });
+  });
+
+  it('rejects a non-string reason', () => {
+    expect(() => parseTerminalAction({ action: 'abort', reason: 42 })).toThrow(/reason/i);
+  });
+
+  it('rejects a non-string summary', () => {
+    expect(() => parseTerminalAction({ action: 'done', summary: 42 })).toThrow(/summary/i);
+  });
+
+  it('rejects a non-object payload', () => {
+    expect(() => parseTerminalAction('abort')).toThrow(/object/i);
+  });
+
+  it('rejects a dispatchable action passed as a terminal action', () => {
+    expect(() => parseTerminalAction({ action: 'click', handle: 'e1' })).toThrow(/invalid/i);
+  });
+
+  it('keeps done and abort out of the dispatchable action enum', () => {
+    // Terminal actions are handled by the agent loop, never dispatched to the
+    // engine, so they must not pass the dispatchable-name check.
+    expect(isValidActionName('done')).toBe(false);
+    expect(isValidActionName('abort')).toBe(false);
   });
 });

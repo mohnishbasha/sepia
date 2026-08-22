@@ -35,6 +35,11 @@ export interface AgentConfig {
   maxRetries: number;
   confidenceThreshold: number;
   maxHistorySteps?: number;
+  /**
+   * Maximum number of consecutive identical (action, handle) steps on an
+   * unchanged page before the run is stopped as a loop (AC-AG10).
+   */
+  loopThreshold?: number;
 }
 
 export interface PrivacyConfig {
@@ -81,6 +86,7 @@ export const defaultConfig: SepiaConfig = {
     maxRetries: 3,
     confidenceThreshold: 0.7,
     maxHistorySteps: 10,
+    loopThreshold: 3,
   },
   privacy: {
     telemetry: false,
@@ -109,6 +115,7 @@ export const CONFIG_BOUNDS = {
   maxRetries: { min: 0, max: 10 },
   confidenceThreshold: { min: 0, max: 1 },
   maxHistorySteps: { min: 1, max: 100 },
+  loopThreshold: { min: 2, max: 20 },
   settleTimeoutMs: { min: 0, max: 30_000 },
   rateLimitMs: { min: 0, max: 60_000 },
 } as const;
@@ -163,6 +170,14 @@ export function mergeConfig(overrides: DeepPartial<SepiaConfig>): SepiaConfig {
       agent.maxHistorySteps,
       CONFIG_BOUNDS.maxHistorySteps,
       defaultConfig.agent.maxHistorySteps ?? 10,
+    );
+  }
+  if (agent.loopThreshold !== undefined) {
+    // AC-AG10: undefined disables loop detection entirely; otherwise clamp to bounds.
+    agent.loopThreshold = bounded(
+      agent.loopThreshold,
+      CONFIG_BOUNDS.loopThreshold,
+      defaultConfig.agent.loopThreshold ?? 3,
     );
   }
 

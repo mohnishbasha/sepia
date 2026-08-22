@@ -305,3 +305,117 @@ documentation. Every item below is test-first with a numbered AC.
   benchmark.
 - **Prompt-injection sanitization is regex-based.** It is defence in depth, not a
   guarantee, and its broader patterns can mask legitimate page copy.
+
+---
+
+## 9. Issue #5 — `done` always reported success
+
+A follow-up fix for GitHub issue #5: the agent had a single terminal action,
+`done`, that unconditionally set `outcome: 'success'`. A model that hit a CAPTCHA,
+a paywall, or simply judged the goal impossible had no honest path to say "I
+cannot do this" — the run was still reported as a success, and CLI/HTTP callers
+saw exit `0` / HTTP `200`.
+
+### New acceptance criteria
+
+| AC     | Description                                                                             | Where                                      |
+| ------ | --------------------------------------------------------------------------------------- | ------------------------------------------ |
+| AC-A9  | Terminal actions (`done`/`abort`) are validated at the boundary and never dispatched    | `tests/contract/action-validation.test.ts` |
+| AC-AG9 | An `abort` action ends the run as `outcome: 'unable'`, surfacing the reason as `answer` | `tests/integration/unable.test.ts`         |
+
+### Changes made
+
+- **`types/index.ts`** — added `'unable'` to the `Outcome` union. CLI
+  (`exit 1`) and HTTP (`422`) map any non-`success` outcome to a failure, so no
+  caller-side change was required.
+- **`actions/index.ts`** — added `TerminalActionName`, `TerminalAction`,
+  `isTerminalActionName()`, and `parseTerminalAction()`. `abort` (and `done`)
+  are typed and validated at the boundary but stay out of the `ActionName`
+  dispatch enum — they are terminal and never reach the engine.
+- **`agent/index.ts`** — the observe-act loop now treats `done` and `abort`
+  uniformly as terminal actions. `done` → `outcome: 'success'` (unchanged);
+  `abort` → `outcome: 'unable'` with the model's `reason` surfaced as
+  `RunTrace.answer`. A malformed terminal payload (e.g. non-string `reason`) is
+  rejected with corrective feedback and retried (AC-AG8). Both system prompts
+  now advertise `abort` with a when-to-use note.
+
+### Defect fixed
+
+`done` was the only terminal action and always produced `success`; there was no
+typed way for the model to report an unachievable goal. The new `abort` action
+maps to `outcome: 'unable'`, and callers now observe a non-success exit/status
+(`exit 1` / HTTP 422) instead of a false success.
+
+---
+
+## 10. Issue #4 — system prompt advertised 4 of 18 implemented actions
+
+### New acceptance criteria
+
+| AC     | Description                                                                                                                   | Where                              |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| AC-A10 | The system prompt advertises every dispatchable action except `screenshot`; every advertised example is valid at the boundary | `tests/unit/system-prompt.test.ts` |
+
+### Changes made
+
+- **`agent/index.ts`** — `SYSTEM_PROMPT_DEFAULT` and `SYSTEM_PROMPT_MINIMAL` now
+  advertise all 18 dispatchable actions (`click`, `type`, `select`, `check`,
+  `hover`, `scroll`, `press`, `read`, `text`, `observe`, `wait`, `open`, `back`,
+  `forward`, `tabs.new`, `tabs.close`, `tabs.list`, `tabs.switch`) plus the
+  terminal actions `done`/`abort`, with a compact field-notes block covering
+  required vs. optional fields and valid enum values. `selectSystemPrompt()` is
+  exported so the advertised set is testable.
+- **`tests/unit/system-prompt.test.ts`** — asserts that every dispatchable
+  action except `screenshot` appears in both prompts, that `screenshot` never
+  appears in the model context, that every advertised example line parses
+  cleanly through `parseAction`/`parseTerminalAction`, and that no unknown
+  action name is advertised.
+
+### Defect fixed
+
+The model was only told about `click`, `type`, `open`, `text`, and the terminal
+actions. Every other implemented action was dead code from the model's
+perspective: dropdowns and checkboxes were unusable (no `select`/`check`),
+content below the fold was invisible (no `scroll`), keyboard submission was
+impossible (no `press`), truncated prose was unrecoverable (no `read`), and
+navigation was one-way (no `back`/`forward`, no tab management). The prompts now
+match the actual dispatchable surface. `screenshot` stays deliberately out of
+the model prompt — it is an operator/SDK artifact and its base64 must not enter
+the LLM context. The prompt grew ~255 tokens; the issue's own measurement shows
+a single wasted step (~11.6k tokens) pays that back ~9x over.
+
+---
+
+## 11. Issue #6 — no loop detection; repeated identical actions burn the budget
+
+### New acceptance criteria
+
+| AC      | Description                                                                                                                                           | Where                                      |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| AC-AG10 | Repeated identical `(action, handle)` with an unchanged view hash ends the run as `outcome: 'unable'` after `agent.loopThreshold` consecutive repeats | `tests/integration/loop-detection.test.ts` |
+
+### Changes made
+
+- **`serializer/index.ts`** — new `hashView(view: CompactView): string`.
+  SHA-256 over `{url, title, nodes}`, deliberately excluding `timestampMs` and
+  `tokenCount` so re-observations of an unchanged page hash identically. Pure
+  and deterministic, consistent with the serializer's invariants.
+- **`config/index.ts`** — new `agent.loopThreshold?: number` (default `3`,
+  bounded to `[2, 20]` by `mergeConfig`). The counter resets to 1 when either
+  the `(action, handle)` key or the view hash changes.
+- **`agent/index.ts`** — after dispatching a non-terminal step and after the
+  stale-handle bail, the agent compares the step's `(action, handle)` key and
+  `hashView(view)` against the previous step's. `loopThreshold` consecutive
+  identical pairs end the run with `outcome: 'unable'` and a diagnostic
+  `answer` ("Loop detected: …"), before the step-budget check.
+- **`docs/phase1-spec.md`** — FR-50 now lists loop exhaustion as a
+  termination condition.
+
+### Defect fixed
+
+An agent stuck on an unresponsive element (a dead button, a modal that never
+opened, a CAPTCHA it keeps clicking) re-issued the same action until
+`maxSteps` ran out and reported `budget_exceeded`/`error`. The run now stops
+after three identical no-ops with an honest `unable` outcome and a diagnostic
+`answer`, pairing with issue #5's `unable` path; CLI/HTTP callers see
+`exit 1` / HTTP `422` with zero caller-side changes.

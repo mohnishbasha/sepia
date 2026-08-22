@@ -8,10 +8,14 @@
  * maxSteps is the fast proxy for this: with a model that never says `done`, a
  * normalized agent must stop at the clamped ceiling instead of honouring an
  * absurd request.
+ *
+ * Note: the mocked model cycles through different handles each step so the run
+ * reaches the step budget rather than being stopped first by loop detection
+ * (AC-AG10), which this test is not trying to exercise.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { makeMockEngine, makeConfig, modelReturning } from '../helpers/agent-harness.js';
+import { makeMockEngine, makeConfig } from '../helpers/agent-harness.js';
 import { CONFIG_BOUNDS } from '../../config/index.js';
 
 vi.mock('../../engine/index.js', () => ({ createEngine: vi.fn() }));
@@ -23,7 +27,18 @@ async function runWithAgentConfig(overrides: Record<string, unknown>) {
   const OpenAI = (await import('openai')).default;
 
   vi.mocked(createEngine).mockResolvedValue(makeMockEngine());
-  const create = modelReturning(JSON.stringify({ action: 'click', handle: 'e2' }));
+  // Cycle through distinct handles so the (action, handle) key changes every
+  // step; a constant action would be stopped by loop detection first.
+  let call = 0;
+  const create = vi.fn().mockImplementation(() => {
+    call += 1;
+    return Promise.resolve({
+      choices: [
+        { message: { content: JSON.stringify({ action: 'click', handle: `h${call % 5}` }) } },
+      ],
+      usage: { total_tokens: 50 },
+    });
+  });
   vi.mocked(OpenAI).mockImplementation(
     () => ({ chat: { completions: { create } } }) as unknown as InstanceType<typeof OpenAI>,
   );

@@ -23,7 +23,7 @@ export type ErrorCode =
 export type WaitConditionType =
   { type: 'url'; pattern: string } | { type: 'element'; handle: string } | { type: 'networkIdle' };
 
-export type Outcome = 'success' | 'budget_exceeded' | 'error' | 'stale_bail';
+export type Outcome = 'success' | 'budget_exceeded' | 'error' | 'stale_bail' | 'unable';
 
 // ── Compact view (defined here so engine/ and actions/ can reference it) ─────
 
