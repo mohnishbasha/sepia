@@ -401,10 +401,40 @@ function walkAX(
 }
 
 /**
- * Apply minimal verbosity filter: keep only interactive nodes and headings.
+ * State with nothing left beyond what the absence of a state object already
+ * implies. `buildState()` stamps `enabled` on every interactive node, so a
+ * bare `{ enabled: true }` says only "this control is ordinary" while spending
+ * tokens saying it on each line of the view.
+ *
+ * Non-default state survives untouched: disabled / checked / required /
+ * expanded / selected change what an action means, and a minimal view that
+ * hides them makes the model act blind.
+ */
+function stripDefaultState(state: NodeState | undefined): NodeState | undefined {
+  if (state === undefined) return undefined;
+  const meaningful: NodeState = {};
+  if (state.enabled === false) meaningful.enabled = false;
+  if (state.checked !== undefined) meaningful.checked = state.checked;
+  if (state.required !== undefined) meaningful.required = state.required;
+  if (state.expanded !== undefined) meaningful.expanded = state.expanded;
+  if (state.selected !== undefined) meaningful.selected = state.selected;
+  return Object.keys(meaningful).length > 0 ? meaningful : undefined;
+}
+
+/**
+ * Apply minimal verbosity filter (AC-S6).
+ *
+ * Keeps handle-bearing nodes only. The previous rule — "handles plus headings"
+ * — was no cut at all: on list-like pages nearly every node standard keeps is
+ * interactive or a heading, so both levels produced identical output
+ * (issue #18). Dropping every content-only node is safe for disambiguation:
+ * a control's `context` label was captured during the walk and attached after
+ * this filter runs, so the surrounding prose node goes while the label that
+ * tells identical controls apart stays (AC-S8). `value` and non-default state
+ * are likewise preserved by this filter — see `stripDefaultState`.
  */
 function applyMinimalFilter(nodes: CompactNode[]): CompactNode[] {
-  return nodes.filter((n) => n.handle !== undefined || n.role === 'heading');
+  return nodes.filter((n) => n.handle !== undefined);
 }
 
 /**
@@ -543,6 +573,22 @@ export function serialize(
   }
 
   attachContext(filteredNodes);
+
+  // Minimal strips state that only restates the default, including on nodes
+  // the DOM fallback synthesized. Runs after `attachContext` because the
+  // context candidates are held in a WeakMap keyed by node identity — replacing
+  // nodes earlier would orphan every control's label (AC-S8). Spreading keeps
+  // the attached `context`; nothing shared is mutated, so purity holds.
+  if (verbosity === 'minimal') {
+    filteredNodes = filteredNodes.map((n) => {
+      if (n.state === undefined) return n;
+      const stripped = stripDefaultState(n.state);
+      if (stripped !== undefined) return { ...n, state: stripped };
+      const withoutState = { ...n };
+      delete withoutState.state;
+      return withoutState;
+    });
+  }
 
   const budgeted = applyTokenBudget(filteredNodes, opts?.maxTokens);
 

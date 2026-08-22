@@ -19,14 +19,14 @@ The 2 todo items (AC-F1, AC-F2) are intentionally deferred — they require `mak
 
 ### Serializer (M1)
 
-| AC    | Description                                                   | Status          |
-| ----- | ------------------------------------------------------------- | --------------- |
-| AC-S1 | Median token count ≤ 900 across 20-page corpus                | ✅ pass         |
-| AC-S2 | 95th-percentile token count ≤ 1,500                           | ✅ pass         |
-| AC-S3 | ≥ 95% of ground-truth interactive elements present            | ✅ pass         |
-| AC-S4 | Serializer output is deterministic for same input             | ✅ pass         |
-| AC-S5 | DOM-fallback activates when AX tree has < 5 interactive nodes | ✅ pass         |
-| AC-S6 | Minimal verbosity produces fewer/equal nodes than standard    | ✅ pass (bonus) |
+| AC    | Description                                                                                                            | Status  |
+| ----- | ---------------------------------------------------------------------------------------------------------------------- | ------- |
+| AC-S1 | Median token count ≤ 900 across 20-page corpus                                                                         | ✅ pass |
+| AC-S2 | 95th-percentile token count ≤ 1,500                                                                                    | ✅ pass |
+| AC-S3 | ≥ 95% of ground-truth interactive elements present                                                                     | ✅ pass |
+| AC-S4 | Serializer output is deterministic for same input                                                                      | ✅ pass |
+| AC-S5 | DOM-fallback activates when AX tree has < 5 interactive nodes                                                          | ✅ pass |
+| AC-S6 | `minimal` strictly smaller than `standard` where a reduction is possible; emits handles only, drops default-only state | ✅ pass |
 
 ### Resolver (M2)
 
