@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import type {
   Verbosity,
   CompactView,
@@ -598,4 +599,26 @@ export function estimateTokens(text: string): number {
   } catch {
     return Math.ceil(text.length / 4);
   }
+}
+
+/**
+ * Deterministic content hash of a compact view, used for loop detection
+ * (AC-AG10).
+ *
+ * Hashes the page's identity — URL, title, and the serialized node tree — and
+ * deliberately excludes `timestampMs` (changes on every observation) and
+ * `tokenCount` (derived from the nodes, so redundant). Two observations of an
+ * unchanged page therefore produce the same hash; an action that actually
+ * altered the page will produce a different one.
+ *
+ * Pure and deterministic (no LLM, no network), consistent with the serializer
+ * contract.
+ */
+export function hashView(view: CompactView): string {
+  const canonical = JSON.stringify({
+    url: view.url,
+    title: view.title,
+    nodes: view.nodes,
+  });
+  return createHash('sha256').update(canonical).digest('hex');
 }

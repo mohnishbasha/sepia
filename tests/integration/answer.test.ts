@@ -41,7 +41,12 @@ describe('AC-AG5 — agent returns an answer', () => {
   });
 
   it('leaves answer undefined when the run never reaches done', async () => {
-    const trace = await runWith([JSON.stringify({ action: 'click', handle: 'e2' })]);
+    // Cycle between two handles so the step budget is the binding constraint
+    // (a constant action would trip loop detection first — AC-AG10).
+    const alternating = Array.from({ length: 10 }, (_, i) =>
+      JSON.stringify({ action: 'click', handle: i % 2 === 0 ? 'e1' : 'e2' }),
+    );
+    const trace = await runWith(alternating);
 
     expect(trace.outcome).toBe('budget_exceeded');
     expect(trace.answer).toBeUndefined();

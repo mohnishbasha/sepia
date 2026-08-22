@@ -150,15 +150,15 @@ Requirements are numbered FR-N. Every FR must trace to at least one acceptance t
 
 ### 2.6 Agent loop (Component 6)
 
-| ID    | Requirement                                                                                                                                                                                                                                               |
-| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FR-47 | Parse the plain-language goal into a task structure before beginning the observe-act loop.                                                                                                                                                                |
-| FR-48 | Loop: `observe()` → LLM chooses action → validate → dispatch → receive `ActionResult` → verify progress → repeat.                                                                                                                                         |
-| FR-49 | On `stale` handle or confidence < `config.agent.confidenceThreshold` (default `0.7`), re-observe and retry with bounded exponential backoff: max `config.agent.maxRetries` (default `3`), initial delay `config.agent.retryBackoffMs` (default `1000ms`). |
-| FR-50 | Terminate the loop when: goal reached (LLM signals completion), step budget exhausted, or error threshold exceeded.                                                                                                                                       |
-| FR-51 | Emit a structured trace per run: `{goal, steps: [{action, handle, confidence, tokensUsed, latencyMs, result}], totalTokens, totalSteps, outcome}`.                                                                                                        |
-| FR-52 | Support concurrent runs: each run MUST use an isolated Chromium profile. No shared state between concurrent runs.                                                                                                                                         |
-| FR-53 | Enforce per-run resource budgets: `maxSteps` (default `50`), `maxTokensPerRun` (default `100,000`). Exceed either → terminate run, return structured error.                                                                                               |
+| ID    | Requirement                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-47 | Parse the plain-language goal into a task structure before beginning the observe-act loop.                                                                                                                                                                                                                                                                                                                                          |
+| FR-48 | Loop: `observe()` → LLM chooses action → validate → dispatch → receive `ActionResult` → verify progress → repeat.                                                                                                                                                                                                                                                                                                                   |
+| FR-49 | On `stale` handle or confidence < `config.agent.confidenceThreshold` (default `0.7`), re-observe and retry with bounded exponential backoff: max `config.agent.maxRetries` (default `3`), initial delay `config.agent.retryBackoffMs` (default `1000ms`).                                                                                                                                                                           |
+| FR-50 | Terminate the loop when: goal reached (LLM signals completion via `done`), the LLM declares the goal unachievable (LLM signals `abort`, outcome `unable`), the identical action (the whole validated payload, not just `action` and `handle`) repeats `config.agent.loopThreshold` (default `3`) consecutive times with no change to the observed view hash (outcome `unable`), step budget exhausted, or error threshold exceeded. |
+| FR-51 | Emit a structured trace per run: `{goal, steps: [{action, handle, confidence, tokensUsed, latencyMs, result}], totalTokens, totalSteps, outcome}`.                                                                                                                                                                                                                                                                                  |
+| FR-52 | Support concurrent runs: each run MUST use an isolated Chromium profile. No shared state between concurrent runs.                                                                                                                                                                                                                                                                                                                   |
+| FR-53 | Enforce per-run resource budgets: `maxSteps` (default `50`), `maxTokensPerRun` (default `100,000`). Exceed either → terminate run, return structured error.                                                                                                                                                                                                                                                                         |
 
 ### 2.7 Interfaces
 
@@ -414,9 +414,11 @@ interface RunTrace {
   sessionId: string;
   startMs: number;
   endMs: number;
-  outcome: 'success' | 'budget_exceeded' | 'error' | 'stale_bail';
+  outcome: 'success' | 'budget_exceeded' | 'error' | 'stale_bail' | 'unable';
   totalSteps: number;
   totalTokens: number;
+  /** The model's terminal payload: the `done` summary on success, or the `abort` reason on `unable`. */
+  answer?: string;
   steps: StepTrace[];
 }
 
