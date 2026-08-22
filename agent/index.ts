@@ -61,7 +61,7 @@ export interface SepiaAgent {
 }
 
 // Default system prompt — tuned for large models (Claude, GPT-4, Gemini).
-// Advertisises every dispatchable action except `screenshot`, which stays an
+// Advertises every dispatchable action except `screenshot`, which stays an
 // operator/SDK artifact (issue #4): its base64 must not enter the model context.
 const SYSTEM_PROMPT_DEFAULT = `You are a browser automation agent. On each turn you receive the current page state as a compact outline where [e12] are interactive element handles. Respond with exactly one JSON action from this set:
 {"action":"click","handle":"e12"}
@@ -285,7 +285,7 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
       // Conversation history (excludes system prompt; windowed before each call).
       const history: OpenAI.Chat.ChatCompletionMessageParam[] = [];
 
-      // Loop detection (issue #6, AC-AG10): the same (action, handle) issued
+      // Loop detection (issue #6, AC-AG10): the identical action issued
       // repeatedly against an unchanged view is a no-op loop — the page is not
       // progressing and the model is re-issuing the identical command. We track
       // the previous step's key and view hash, count consecutive repeats, and
@@ -632,13 +632,27 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
             break;
           }
 
-          // Loop detection (issue #6, AC-AG10): the same (action, handle) issued
+          // Loop detection (issue #6, AC-AG10): the identical action issued
           // repeatedly against an unchanged view is a no-op loop — the page is
           // not progressing and the model is re-issuing the identical command.
           // Stop with `unable` instead of burning the step budget.
+          //
+          // The key is the whole validated action, not just (action, handle).
+          // Half the actions carry no handle, so a narrower key collapses
+          // genuinely different commands into one: `scroll down 200` and
+          // `scroll up 900` shared a key, as did every `press` regardless of
+          // which key was pressed. Neither changes the compact view — the AX
+          // tree spans the whole document irrespective of scroll offset, and
+          // focus is not part of a node's state — so the unchanged-view half of
+          // the guard does not catch the mistake either, and a legitimate run
+          // was stopped as a loop.
+          //
+          // Erring wide is the right direction: a false positive kills a working
+          // run, while a false negative merely costs steps until `maxSteps`,
+          // which is the behaviour this replaced.
           const loopThreshold = config.agent.loopThreshold;
           if (loopThreshold !== undefined) {
-            const key = `${typedAction.action}\u0000${typedAction.handle ?? ''}`;
+            const key = JSON.stringify(typedAction);
             const viewHash = hashView(view);
             loopRepeatCount =
               key === loopPrevKey && viewHash === loopPrevViewHash ? loopRepeatCount + 1 : 1;

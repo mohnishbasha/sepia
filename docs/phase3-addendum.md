@@ -390,9 +390,9 @@ a single wasted step (~11.6k tokens) pays that back ~9x over.
 
 ### New acceptance criteria
 
-| AC      | Description                                                                                                                                           | Where                                      |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| AC-AG10 | Repeated identical `(action, handle)` with an unchanged view hash ends the run as `outcome: 'unable'` after `agent.loopThreshold` consecutive repeats | `tests/integration/loop-detection.test.ts` |
+| AC      | Description                                                                                                                                 | Where                                      |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| AC-AG10 | A repeated identical action with an unchanged view hash ends the run as `outcome: 'unable'` after `agent.loopThreshold` consecutive repeats | `tests/integration/loop-detection.test.ts` |
 
 ### Changes made
 
@@ -402,12 +402,24 @@ a single wasted step (~11.6k tokens) pays that back ~9x over.
   and deterministic, consistent with the serializer's invariants.
 - **`config/index.ts`** — new `agent.loopThreshold?: number` (default `3`,
   bounded to `[2, 20]` by `mergeConfig`). The counter resets to 1 when either
-  the `(action, handle)` key or the view hash changes.
+  the action key or the view hash changes.
 - **`agent/index.ts`** — after dispatching a non-terminal step and after the
-  stale-handle bail, the agent compares the step's `(action, handle)` key and
+  stale-handle bail, the agent compares the step's action key and
   `hashView(view)` against the previous step's. `loopThreshold` consecutive
   identical pairs end the run with `outcome: 'unable'` and a diagnostic
   `answer` ("Loop detected: …"), before the step-budget check.
+
+  The key is the whole validated action, serialized. Keying on `(action,
+handle)` alone was measurably wrong: half the actions carry no handle, so
+  `scroll down 200` and `scroll up 900` shared a key, as did every `press`
+  whatever key was pressed. Neither moves the view hash either — the AX tree
+  spans the whole document irrespective of scroll offset, and focus is not part
+  of a node's state — so the unchanged-view half of the guard did not catch it,
+  and legitimate runs (varied scrolling; Tab, Tab, Enter) ended as `unable` with
+  the final action already dispatched. Erring wide is the right direction here:
+  a false positive kills a working run, whereas a false negative merely costs
+  steps until `maxSteps`, which is the behaviour loop detection replaced.
+
 - **`docs/phase1-spec.md`** — FR-50 now lists loop exhaustion as a
   termination condition.
 

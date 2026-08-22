@@ -130,3 +130,68 @@ describe('AC-AG10 — loop detection stops repeated no-op actions', () => {
     expect(trace.totalSteps).toBe(4);
   });
 });
+
+describe('AC-AG10 — the key is the whole action, not just (action, handle)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // Half the actions carry no handle, so a key of `action + handle` collapses
+  // genuinely different commands into one. The unchanged-view half of the guard
+  // does not catch it: measured against a real page, neither `scroll` nor
+  // `press` moves the view hash — the AX tree spans the whole document
+  // regardless of scroll offset, and focus is not part of a node's state.
+
+  it('does not flag scrolls that differ in distance or direction', async () => {
+    const { trace } = await runWith(
+      [
+        JSON.stringify({ action: 'scroll', scrollTarget: 'down', scrollDistance: 200 }),
+        JSON.stringify({ action: 'scroll', scrollTarget: 'down', scrollDistance: 900 }),
+        JSON.stringify({ action: 'scroll', scrollTarget: 'up', scrollDistance: 100 }),
+        doneAction('reached the section'),
+      ],
+      { loopThreshold: 3 },
+    );
+
+    expect(trace.outcome).toBe('success');
+    expect(trace.answer).toBe('reached the section');
+  });
+
+  it('does not flag distinct keypresses, and still dispatches the last one', async () => {
+    // Tab, Tab, Enter shared a key. The Enter was dispatched and the run was
+    // then reported `unable` — a submitted form recorded as a failure.
+    const { trace, engine } = await runWith(
+      [
+        JSON.stringify({ action: 'press', key: 'Tab' }),
+        JSON.stringify({ action: 'press', key: 'Tab' }),
+        JSON.stringify({ action: 'press', key: 'Enter' }),
+        doneAction('submitted'),
+      ],
+      { loopThreshold: 3 },
+    );
+
+    expect(trace.outcome).toBe('success');
+    expect(vi.mocked(engine.press)).toHaveBeenLastCalledWith('Enter');
+  });
+
+  it('still flags a handle-less action repeated identically', async () => {
+    // Widening the key must not disable detection for the actions that most
+    // need it — these are exactly the ones a stuck model repeats.
+    const { trace } = await runWith(
+      Array<string>(6).fill(
+        JSON.stringify({ action: 'scroll', scrollTarget: 'down', scrollDistance: 500 }),
+      ),
+      { loopThreshold: 3 },
+    );
+
+    expect(trace.outcome).toBe('unable');
+    expect(trace.answer).toContain('Loop detected');
+  });
+
+  it('still flags an identical typed payload into the same field', async () => {
+    const { trace } = await runWith(
+      Array<string>(6).fill(JSON.stringify({ action: 'type', handle: 'e1', text: 'hello' })),
+      { loopThreshold: 3 },
+    );
+
+    expect(trace.outcome).toBe('unable');
+  });
+});
