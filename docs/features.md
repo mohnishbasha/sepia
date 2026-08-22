@@ -155,11 +155,11 @@ The compact view is the core of Sepia's token efficiency. It is a pure, determin
 
 **Verbosity levels:**
 
-| Level                | Content                                      |
-| -------------------- | -------------------------------------------- |
-| `minimal`            | Interactive elements only                    |
-| `standard` (default) | Interactive + key content (headings, labels) |
-| `full`               | Everything except explicitly excluded nodes  |
+| Level                | Content                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------ |
+| `minimal`            | Interactive elements only. Typed values, non-default state, and disambiguating context are kept. |
+| `standard` (default) | Interactive + key content (headings, labels)                                                     |
+| `full`               | Everything except explicitly excluded nodes                                                      |
 
 **DOM fallback:** If the AX tree has fewer than 5 interactive nodes, the serializer falls back to DOM-inferred role/name for interactive elements before giving up.
 

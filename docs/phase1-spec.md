@@ -79,17 +79,17 @@ Requirements are numbered FR-N. Every FR must trace to at least one acceptance t
 
 ### 2.1 Serializer (Component 1)
 
-| ID   | Requirement                                                                                                                                                                                      |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| FR-1 | On page settle (DOM stable + network-idle heuristic), build a compact view from the merged AX tree + DOM.                                                                                        |
-| FR-2 | Compact view MUST include all interactive nodes: `link`, `button`, `input`, `select`, `textarea`, `role=button\|tab\|menuitem`, `contenteditable`.                                               |
-| FR-3 | Compact view MUST include meaningful non-interactive content: headings, labels, table cells.                                                                                                     |
-| FR-4 | Compact view MUST drop: layout wrappers with no semantic content, tracking pixels, offscreen nodes, `aria-hidden` nodes, duplicate whitespace, boilerplate text repeated after first occurrence. |
-| FR-5 | Each interactive node MUST carry a short handle in format `[eNN]` (e.g. `[e12]`). Non-interactive nodes carry no handle.                                                                         |
-| FR-6 | Emit a compact indented outline, one line per node. Example format: `[e12] button "Sign in"  (enabled)`.                                                                                         |
-| FR-7 | Expose a `verbosity` parameter: `minimal` / `standard` / `full`. Default: `standard`. Higher verbosity includes more context nodes.                                                              |
-| FR-8 | If AX tree is sparse (fewer than 5 interactive nodes detected), fall back to DOM-inferred role/name for interactive elements before giving up.                                                   |
-| FR-9 | `serializer` MUST be a pure, deterministic function: given the same AX snapshot + DOM snapshot, it MUST produce the same compact view. No LLM calls, no network calls, no side effects.          |
+| ID   | Requirement                                                                                                                                                                                                                                                                                                                                                                       |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-1 | On page settle (DOM stable + network-idle heuristic), build a compact view from the merged AX tree + DOM.                                                                                                                                                                                                                                                                         |
+| FR-2 | Compact view MUST include all interactive nodes: `link`, `button`, `input`, `select`, `textarea`, `role=button\|tab\|menuitem`, `contenteditable`.                                                                                                                                                                                                                                |
+| FR-3 | Compact view MUST include meaningful non-interactive content: headings, labels, table cells.                                                                                                                                                                                                                                                                                      |
+| FR-4 | Compact view MUST drop: layout wrappers with no semantic content, tracking pixels, offscreen nodes, `aria-hidden` nodes, duplicate whitespace, boilerplate text repeated after first occurrence.                                                                                                                                                                                  |
+| FR-5 | Each interactive node MUST carry a short handle in format `[eNN]` (e.g. `[e12]`). Non-interactive nodes carry no handle.                                                                                                                                                                                                                                                          |
+| FR-6 | Emit a compact indented outline, one line per node. Example format: `[e12] button "Sign in"  (enabled)`.                                                                                                                                                                                                                                                                          |
+| FR-7 | Expose a `verbosity` parameter: `minimal` / `standard` / `full`. Default: `standard`. Higher verbosity includes more context nodes. `minimal` emits handle-bearing nodes only (no content-only nodes) and drops state that only restates the default (`{enabled: true}`); it preserves `value`, non-default state, and `context`, which disambiguation depends on (AC-S6, AC-S8). |
+| FR-8 | If AX tree is sparse (fewer than 5 interactive nodes detected), fall back to DOM-inferred role/name for interactive elements before giving up.                                                                                                                                                                                                                                    |
+| FR-9 | `serializer` MUST be a pure, deterministic function: given the same AX snapshot + DOM snapshot, it MUST produce the same compact view. No LLM calls, no network calls, no side effects.                                                                                                                                                                                           |
 
 ### 2.2 Resolver (Component 2)
 
@@ -492,13 +492,14 @@ export function createAgent(config: SepiaConfig): SepiaAgent;
 
 ### AC-Serializer (validates M1)
 
-| AC    | Criterion                                                             | Test                                                                                        |
-| ----- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| AC-S1 | Median token count ≤ 900 across 20-page corpus                        | `test-tokens`: measure token count per corpus page; assert median ≤ 900                     |
-| AC-S2 | 95th-percentile token count ≤ 1,500 across 20-page corpus             | `test-tokens`: assert p95 ≤ 1500                                                            |
-| AC-S3 | ≥ 95% of ground-truth interactive elements present in compact view    | `test-tokens`: compare compact view handles to labelled ground-truth; assert ≥ 95% coverage |
-| AC-S4 | Serializer output is deterministic for same input                     | Unit test: call serializer twice with same AX+DOM snapshot; assert identical output         |
-| AC-S5 | DOM-fallback mode activates when AX tree yields < 5 interactive nodes | Unit test: synthetic sparse-AX page; assert interactive nodes still appear in output        |
+| AC    | Criterion                                                                                                                                                                                                                    | Test                                                                                                                                                             |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC-S1 | Median token count ≤ 900 across 20-page corpus                                                                                                                                                                               | `test-tokens`: measure token count per corpus page; assert median ≤ 900                                                                                          |
+| AC-S2 | 95th-percentile token count ≤ 1,500 across 20-page corpus                                                                                                                                                                    | `test-tokens`: assert p95 ≤ 1500                                                                                                                                 |
+| AC-S3 | ≥ 95% of ground-truth interactive elements present in compact view                                                                                                                                                           | `test-tokens`: compare compact view handles to labelled ground-truth; assert ≥ 95% coverage                                                                      |
+| AC-S4 | Serializer output is deterministic for same input                                                                                                                                                                            | Unit test: call serializer twice with same AX+DOM snapshot; assert identical output                                                                              |
+| AC-S5 | DOM-fallback mode activates when AX tree yields < 5 interactive nodes                                                                                                                                                        | Unit test: synthetic sparse-AX page; assert interactive nodes still appear in output                                                                             |
+| AC-S6 | `minimal` is strictly smaller than `standard` wherever a reduction is possible: it emits handle-bearing nodes only and drops default-only state (`{enabled: true}`); `value`, non-default state, and `context` are preserved | `test-tokens`: list-page fixture where both levels were byte-identical asserts fewer nodes **and** tokens; unit tests pin exactly what `minimal` drops and keeps |
 
 ### AC-Resolver (validates M2)
 
@@ -741,7 +742,7 @@ ActionResult → [agent] → next step or terminate
 - `tests/token-budget/` suite: token count + element coverage for each corpus page
 - Unit tests for serializer (determinism, pruning rules, DOM-fallback activation)
 
-**Acceptance tests:** AC-S1 through AC-S5 all pass in CI.
+**Acceptance tests:** AC-S1 through AC-S6 all pass in CI.
 
 ---
 
