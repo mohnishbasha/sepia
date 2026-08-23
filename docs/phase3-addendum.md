@@ -228,32 +228,33 @@ documentation. Every item below is test-first with a numbered AC.
 
 ### New acceptance criteria
 
-| AC     | Description                                                               | Where                                            |
-| ------ | ------------------------------------------------------------------------- | ------------------------------------------------ |
-| AC-AG5 | A run returns the model's `done` summary as `RunTrace.answer`             | `tests/integration/answer.test.ts`               |
-| AC-AG6 | `gateHandle()` refuses to act below `agent.confidenceThreshold`           | `tests/unit/resolver-gate.test.ts`               |
-| AC-AG7 | Exhausted stale/low-confidence retries end the run as `stale_bail`        | `tests/integration/stale-bail.test.ts`           |
-| AC-AG8 | A rejected model reply is retried WITH corrective feedback                | `tests/integration/retry-feedback.test.ts`       |
-| AC-A5  | `parseAction()` validates required fields and field types                 | `tests/contract/action-validation.test.ts`       |
-| AC-A6  | `screenshot` capture across engine, action enum, SDK, MCP                 | `tests/integration/screenshot.test.ts`           |
-| AC-A7  | Page prose is retrievable via `text` across engine, action enum, SDK, MCP | `tests/integration/page-text.test.ts`            |
-| AC-A8  | A decided plan runs in one call, each step still gated                    | `tests/integration/action-batch.test.ts`         |
-| AC-R6  | N identically-named same-role elements get N distinct handles             | `tests/integration/list-handles.test.ts`         |
-| AC-R7  | Acting on a handle hits that element, not the first role+name match       | `tests/integration/list-handles.test.ts`         |
-| AC-R8  | Bounded settle on never-idle pages; handle map is pruned                  | `tests/integration/settle-budget.test.ts`        |
-| AC-R9  | Handle identity uses real DOM attributes joined from `DOM.getDocument`    | `tests/integration/stable-attrs.test.ts`         |
-| AC-R10 | A handle from a frame acts inside that frame, with per-frame ordinals     | `tests/integration/iframes.test.ts`              |
-| AC-S7  | Token counts come from `cl100k_base`, not `characters / 4`                | `tests/token-budget/tokenizer.test.ts`           |
-| AC-S9  | `full` verbosity descends into unnamed containers and emits prose         | `tests/integration/page-text.test.ts`            |
-| AC-S10 | Child-frame accessibility trees are merged into the view                  | `tests/integration/iframes.test.ts`              |
-| AC-S11 | `observe` honours a token budget and says what it dropped                 | `tests/token-budget/observe-budget.test.ts`      |
-| AC-F6  | The configured preset is applied and validated before a session is used   | `tests/fingerprint/engine-profile.test.ts`       |
-| AC-P5  | Secret field values are stripped from the view before it reaches the LLM  | `tests/data-boundary/view-redaction.test.ts`     |
-| AC-P6  | A credential is flagged by the field it went into, not only its shape     | `tests/data-boundary/secret-destination.test.ts` |
-| AC-P7  | A credential in the goal reaches neither the model nor the trace          | `tests/data-boundary/goal-secrets.test.ts`       |
-| AC-T1  | Switching tabs retargets every action; tab ids survive a close            | `tests/integration/tabs.test.ts`                 |
-| SR-11  | HTTP: allowlisted config, mandatory auth, body cap, non-racy concurrency  | `tests/integration/http-hardening.test.ts`       |
-| SR-13  | `security.allowedDomains` restricts navigation, including via links       | `tests/integration/allowed-domains.test.ts`      |
+| AC     | Description                                                                                                                                             | Where                                            |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| AC-AG5 | A run returns the model's `done` summary as `RunTrace.answer`                                                                                           | `tests/integration/answer.test.ts`               |
+| AC-AG6 | `gateHandle()` refuses to act below `agent.confidenceThreshold`                                                                                         | `tests/unit/resolver-gate.test.ts`               |
+| AC-AG7 | Exhausted stale/low-confidence retries end the run as `stale_bail`                                                                                      | `tests/integration/stale-bail.test.ts`           |
+| AC-AG8 | A rejected model reply is retried WITH corrective feedback                                                                                              | `tests/integration/retry-feedback.test.ts`       |
+| AC-A5  | `parseAction()` validates required fields and field types                                                                                               | `tests/contract/action-validation.test.ts`       |
+| AC-A6  | `screenshot` capture across engine, action enum, SDK, MCP                                                                                               | `tests/integration/screenshot.test.ts`           |
+| AC-A7  | Page prose is retrievable via `text` across engine, action enum, SDK, MCP                                                                               | `tests/integration/page-text.test.ts`            |
+| AC-A8  | A decided plan runs in one call, each step still gated                                                                                                  | `tests/integration/action-batch.test.ts`         |
+| AC-R6  | N identically-named same-role elements get N distinct handles                                                                                           | `tests/integration/list-handles.test.ts`         |
+| AC-R7  | Acting on a handle hits that element, not the first role+name match                                                                                     | `tests/integration/list-handles.test.ts`         |
+| AC-R8  | Bounded settle on never-idle pages; handle map is pruned                                                                                                | `tests/integration/settle-budget.test.ts`        |
+| AC-R9  | Handle identity uses real DOM attributes joined from `DOM.getDocument`                                                                                  | `tests/integration/stable-attrs.test.ts`         |
+| AC-R10 | A handle from a frame acts inside that frame, with per-frame ordinals                                                                                   | `tests/integration/iframes.test.ts`              |
+| AC-S7  | Token counts come from `cl100k_base`, not `characters / 4`                                                                                              | `tests/token-budget/tokenizer.test.ts`           |
+| AC-S9  | `full` verbosity descends into unnamed containers and emits prose                                                                                       | `tests/integration/page-text.test.ts`            |
+| AC-S10 | Child-frame accessibility trees are merged into the view                                                                                                | `tests/integration/iframes.test.ts`              |
+| AC-S12 | Repeated controls on a row-structured page are labelled from the row above them; unnamed controls are left alone; distinctness is judged after trimming | `tests/unit/nearby-labels.test.ts`               |
+| AC-S11 | `observe` honours a token budget and says what it dropped                                                                                               | `tests/token-budget/observe-budget.test.ts`      |
+| AC-F6  | The configured preset is applied and validated before a session is used                                                                                 | `tests/fingerprint/engine-profile.test.ts`       |
+| AC-P5  | Secret field values are stripped from the view before it reaches the LLM                                                                                | `tests/data-boundary/view-redaction.test.ts`     |
+| AC-P6  | A credential is flagged by the field it went into, not only its shape                                                                                   | `tests/data-boundary/secret-destination.test.ts` |
+| AC-P7  | A credential in the goal reaches neither the model nor the trace                                                                                        | `tests/data-boundary/goal-secrets.test.ts`       |
+| AC-T1  | Switching tabs retargets every action; tab ids survive a close                                                                                          | `tests/integration/tabs.test.ts`                 |
+| SR-11  | HTTP: allowlisted config, mandatory auth, body cap, non-racy concurrency                                                                                | `tests/integration/http-hardening.test.ts`       |
+| SR-13  | `security.allowedDomains` restricts navigation, including via links                                                                                     | `tests/integration/allowed-domains.test.ts`      |
 
 ### Defects this pass fixed
 
@@ -590,3 +591,49 @@ saved.
 `observe` reported handle/role/name/value/context and nothing else, so a host could not tell a disabled button from an enabled one: it clicked, got `ok`, and nothing happened. The engine had the state all along — `agent/index.ts`'s `formatNode()` renders it and the MCP surfaces did not.
 
 Both now render it, omitting `enabled: true` because it is stamped on every interactive node and printing it spends tokens per line to say "ordinary" (the AC-S6 reasoning). `selected` was in `NodeState` and rendered by neither surface, so an option already chosen looked identical to one that was not; `formatNode()` is fixed too.
+
+---
+
+## AC-S12 — labels on row-structured pages (issue #44)
+
+`attachContext` labelled nothing on Hacker News: thirty `link "hide"`, none
+distinguishable. Three things had to be true at once for that.
+
+A `hide` link's siblings are all links, and `siblingText()` excludes interactive
+ones. Its only named ancestor is the cell whose accessible name concatenates the
+whole row — `"149 points by vanpra 2 hours ago | hide | 58 comments"` — which
+restates the link rather than distinguishing it, and exceeds the ancestor length
+limit anyway. And the story title, the one thing that identifies the row, lives
+in a _different_ `<tr>`, so it is neither sibling nor ancestor.
+
+What the walk did find was the page name, `"Hacker News"`. Being true of all
+thirty, it lost to the distinctness rule — but not before satisfying the lookup
+and pre-empting anything better. So the group ended with no labels at all, and
+the diagnosis is really two bugs: no candidate reaches a row, and a useless
+candidate crowds out the search for one.
+
+Both are fixed. Candidate selection now runs per group rather than per node, so
+a set of labels that fails distinctness falls back to `precedingRowText()` —
+the nearest node _above_ this one in the flat, document-ordered view. On Hacker
+News that is the title cell, and it labels all thirty correctly.
+
+Two guards keep it honest. A candidate containing the node's own name is skipped
+as a restatement of its own subtree. The walk stops at another member of the
+same group, because past it we are in a different row.
+
+It applies only to nodes that have a name. An unnamed control — Hacker News's
+upvote arrows are `link ""` — is identified by what comes _after_ it, and the
+backward walk produced the previous row's text every time. Confidently wrong is
+worse than blank, so those are left alone and the second half of #44 stands.
+
+Trimming now happens _before_ distinctness is judged. Two headlines sharing an
+opening clause could previously pass the check and then collapse to the same
+string, handing back a group that looked narrowed and was not.
+
+**Cost.** Hacker News goes 3,902 → 4,818 tokens (+23%) for 62 labels across 12
+groups. That is the price of being able to address a row at all; without it the
+model cannot pick one. Shortening `MAX_CONTEXT_CHARS` is a cheap lever if the
+trade needs revisiting — measured at 32 chars it is 4,602 and at 24 chars 4,474,
+with no group losing distinctness at either. It is left at 48 so #25's behaviour
+is unchanged. A page whose controls do not collide is untouched: the GitHub
+issues list measured 1,206 tokens before and after.

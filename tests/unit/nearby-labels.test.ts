@@ -291,3 +291,120 @@ describe('AC-S8 — cost', () => {
     expect(before.nodes.every((n) => n.context === undefined)).toBe(true);
   });
 });
+
+/**
+ * AC-S12 — the label survives a page built out of rows (issue #44).
+ *
+ * Measured on Hacker News: thirty `link "hide"`, none labelled. A `hide` link's
+ * siblings are all links, which `siblingText()` excludes; its only named
+ * ancestor is the cell whose name concatenates the whole row and so restates
+ * the link itself; and the story title lives in a *different* table row, so it
+ * is neither sibling nor ancestor. What the walk did find was the page name,
+ * "Hacker News" — true of all thirty, dropped by the distinctness rule, and in
+ * the meantime it satisfied the lookup and pre-empted anything better.
+ */
+describe('AC-S12 — rows', () => {
+  /** Two stories, each a title cell followed by a subtext cell, as HN builds them. */
+  function story(title: string, when: string): AXSnapshot[] {
+    return [
+      { role: 'cell', name: title, children: [{ role: 'link', name: title }] },
+      {
+        role: 'cell',
+        name: `by someone ${when} | hide | 5 comments`,
+        children: [
+          { role: 'link', name: when },
+          { role: 'link', name: 'hide' },
+          { role: 'link', name: '5 comments' },
+        ],
+      },
+    ];
+  }
+
+  const FEED: AXSnapshot = {
+    role: 'WebArea',
+    // The page name is the candidate the walk finds for every row, and it
+    // separates none of them.
+    name: 'Hacker News',
+    children: [
+      ...story('How Complex Systems Fail', '6 hours ago'),
+      ...story('The Vibe Tax', '3 hours ago'),
+      ...story('What Is a Harness', '7 hours ago'),
+    ],
+  };
+
+  const labelsFor = (name: string) =>
+    serialize(FEED, null, {})
+      .nodes.filter((n) => n.name === name)
+      .map((n) => n.context);
+
+  it('labels each repeated control with its own row', () => {
+    const labels = labelsFor('hide');
+
+    expect(labels).toHaveLength(3);
+    expect(labels[0]).toContain('How Complex Systems Fail');
+    expect(labels[1]).toContain('The Vibe Tax');
+    expect(labels[2]).toContain('What Is a Harness');
+  });
+
+  it('does not settle for the page name, which is true of every row', () => {
+    expect(labelsFor('hide').every((l) => l !== 'Hacker News')).toBe(true);
+  });
+
+  it('skips an ancestor whose name merely restates the control', () => {
+    // The subtext cell is named "by someone 3 hours ago | hide | 5 comments":
+    // it contains the link's own name, so it describes it rather than
+    // distinguishing it from its siblings.
+    expect(labelsFor('hide').every((l) => l !== undefined && !l.includes('| hide |'))).toBe(true);
+  });
+
+  it('does not reach past another member of the group into the previous row', () => {
+    const labels = labelsFor('5 comments');
+
+    expect(labels[1]).toContain('The Vibe Tax');
+    expect(labels[1]).not.toContain('How Complex Systems Fail');
+  });
+
+  it('leaves unnamed controls alone', () => {
+    // An unnamed control is identified by what comes *after* it — Hacker News's
+    // upvote arrows are `link ""` sitting before their story. Walking backwards
+    // yields the previous row every time, so it is left blank rather than
+    // labelled with something confidently wrong.
+    // Shaped as Hacker News actually is: the arrow sits in an *unnamed* cell,
+    // and the title it belongs to is in the cell that follows.
+    const withArrows: AXSnapshot = {
+      role: 'WebArea',
+      name: 'Feed',
+      children: [
+        { role: 'cell', name: '', children: [{ role: 'link', name: '' }] },
+        { role: 'cell', name: 'Story one', children: [{ role: 'link', name: 'Story one' }] },
+        { role: 'cell', name: '', children: [{ role: 'link', name: '' }] },
+        { role: 'cell', name: 'Story two', children: [{ role: 'link', name: 'Story two' }] },
+      ],
+    };
+
+    const arrows = serialize(withArrows, null, {}).nodes.filter(
+      (n) => n.role === 'link' && n.name === '',
+    );
+    expect(arrows.length).toBeGreaterThan(1);
+    expect(arrows.every((n) => n.context === undefined)).toBe(true);
+  });
+
+  it('judges distinctness after trimming, not before', () => {
+    // Two labels that differ only past the cap would pass an untrimmed check
+    // and then collapse into the same string, handing back a group that looks
+    // narrowed and is not. Dropping them is the honest outcome.
+    const prefix = 'A very long shared headline prefix that runs on and on';
+    const shared: AXSnapshot = {
+      role: 'WebArea',
+      name: 'Feed',
+      children: [...story(`${prefix} one`, '1 hour ago'), ...story(`${prefix} two`, '2 hours ago')],
+    };
+
+    const labels = serialize(shared, null, {})
+      .nodes.filter((n) => n.name === 'hide')
+      .map((n) => n.context);
+
+    const named = labels.filter((l): l is string => l !== undefined);
+    expect(new Set(named).size).toBe(named.length);
+  });
+});

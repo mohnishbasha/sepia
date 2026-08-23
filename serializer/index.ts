@@ -491,8 +491,76 @@ function domFallbackWalk(
  * Nodes with nothing useful nearby are left alone rather than given a made-up
  * label; they remain separately addressable by handle.
  */
+/**
+ * How far back to look for text that identifies a control's row (AC-S12).
+ *
+ * Bounded because the walk is per colliding node and because text far from a
+ * control is unlikely to describe it.
+ */
+const CONTEXT_LOOKBACK_NODES = 30;
+
+/**
+ * Text from the nearest thing *above* this node in the tree that is not simply
+ * a restatement of the node's own subtree.
+ *
+ * The candidates gathered during the walk — sibling text and named ancestors —
+ * find nothing on a page built out of rows (issue #44). Measured on Hacker
+ * News: a `hide` link's siblings are all links, which `siblingText()` excludes;
+ * its only named ancestor is the cell whose name concatenates the whole row
+ * (`"149 points by vanpra 2 hours ago | hide | 58 comments"`), which restates
+ * the link itself and is over the ancestor length limit anyway; and the story
+ * title lives in a *different* table row, so it is neither sibling nor
+ * ancestor. Thirty identical `link "hide"` and nothing to tell them apart.
+ *
+ * The view is flat and in document order, so the row's identity is reachable by
+ * walking back to the first node shallower than this one. That is the title
+ * cell, and it labels all thirty correctly.
+ *
+ * Two guards keep it honest:
+ *
+ * - A candidate containing this node's own name is skipped: that is an ancestor
+ *   whose accessible name is the concatenation of its descendants, describing
+ *   this control rather than distinguishing it.
+ * - The walk stops at another member of the same colliding group, because past
+ *   it we are in a different row and its text describes that row, not this one.
+ *
+ * Only for nodes that have a name of their own. An unnamed control — Hacker
+ * News's upvote arrows are `link ""` — is identified by what comes *after* it,
+ * and measuring the backward walk on those produced the previous row's text
+ * every time. Confidently wrong is worse than blank, so they are left alone.
+ */
+/** Identity of a colliding group: same role, same accessible name. */
+function contextKey(n: CompactNode): string {
+  return `${n.role}\u0000${n.name.toLowerCase().trim()}`;
+}
+
+function precedingRowText(
+  nodes: CompactNode[],
+  index: number,
+  groupKey: string,
+): string | undefined {
+  const self = nodes[index];
+  if (self === undefined) return undefined;
+  const own = self.name.toLowerCase().trim();
+  if (own === '') return undefined;
+
+  const stop = Math.max(0, index - CONTEXT_LOOKBACK_NODES);
+  for (let i = index - 1; i >= stop; i--) {
+    const node = nodes[i];
+    if (node === undefined) continue;
+    if (node.handle !== undefined && contextKey(node) === groupKey) return undefined;
+    if (node.indent >= self.indent) continue;
+
+    const name = tidy(node.name);
+    if (name === '' || !isUsefulContext(name)) continue;
+    if (name.toLowerCase().includes(own)) continue;
+    return name;
+  }
+  return undefined;
+}
+
 function attachContext(nodes: CompactNode[]): void {
-  const key = (n: CompactNode): string => `${n.role}\u0000${n.name.toLowerCase().trim()}`;
+  const key = contextKey;
 
   const counts = new Map<string, number>();
   for (const n of nodes) {
@@ -500,38 +568,73 @@ function attachContext(nodes: CompactNode[]): void {
     counts.set(key(n), (counts.get(key(n)) ?? 0) + 1);
   }
 
-  // Pick a candidate per colliding node, grouped so the choice can be checked.
-  const groups = new Map<string, Array<{ node: CompactNode; label: string }>>();
-
-  for (const n of nodes) {
-    if (n.handle === undefined) continue;
-    if ((counts.get(key(n)) ?? 0) < 2) continue;
-
-    const own = n.name.toLowerCase().trim();
-    const chosen = (candidatesByNode.get(n) ?? []).find(
-      (c) => c !== '' && c.toLowerCase().trim() !== own && isUsefulContext(c),
-    );
-    if (chosen === undefined) continue;
-
-    const label =
-      chosen.length > MAX_CONTEXT_CHARS ? `${chosen.slice(0, MAX_CONTEXT_CHARS - 1)}…` : chosen;
-    const bucket = groups.get(key(n)) ?? [];
-    bucket.push({ node: n, label });
-    groups.set(key(n), bucket);
+  // Every member of every colliding group, with its position, so a group whose
+  // labels turn out useless can be reconsidered as a whole.
+  const groups = new Map<string, Array<{ node: CompactNode; index: number }>>();
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (node === undefined || node.handle === undefined) continue;
+    if ((counts.get(key(node)) ?? 0) < 2) continue;
+    const bucket = groups.get(key(node)) ?? [];
+    bucket.push({ node, index: i });
+    groups.set(key(node), bucket);
   }
 
-  // Only keep labels that tell members of a group apart. A label shared by every
-  // "Delete" on the page — a section heading, a site name — is true of all of
-  // them and separates none, so it is pure cost and a false reassurance that the
-  // choice has been narrowed.
-  //
-  // A member with no label counts as its own identity: when one button is
-  // labelled "Toolbar" and the rest are not, that label is still doing work.
-  for (const [groupKey, bucket] of groups) {
-    const unlabelled = (counts.get(groupKey) ?? 0) - bucket.length;
-    const identities = new Set(bucket.map((b) => b.label)).size + (unlabelled > 0 ? 1 : 0);
-    if (identities < 2) continue;
-    for (const { node, label } of bucket) node.context = label;
+  /** The candidate gathered during the walk: sibling text, then named ancestors. */
+  function walkCandidate(node: CompactNode): string | undefined {
+    const own = node.name.toLowerCase().trim();
+    return (candidatesByNode.get(node) ?? []).find(
+      (c) => c !== '' && c.toLowerCase().trim() !== own && isUsefulContext(c),
+    );
+  }
+
+  /**
+   * Does this set of labels actually tell the group apart?
+   *
+   * A label shared by every "Delete" on the page — a section heading, a site
+   * name — is true of all of them and separates none, so it is pure cost and a
+   * false reassurance that the choice has been narrowed. A member with no label
+   * counts as its own identity: when one button is labelled "Toolbar" and the
+   * rest are not, that label is still doing work.
+   */
+  function distinguishes(labels: Array<string | undefined>): boolean {
+    const named = labels.filter((l): l is string => l !== undefined);
+    if (named.length === 0) return false;
+    return new Set(named).size + (named.length < labels.length ? 1 : 0) >= 2;
+  }
+
+  /**
+   * Trim a label to its budget *before* distinctness is judged.
+   *
+   * Truncating afterwards can merge two labels that the check just certified as
+   * different — two headlines sharing an opening clause — and hand back a group
+   * that looks narrowed and is not.
+   */
+  function trim(label: string | undefined): string | undefined {
+    if (label === undefined) return undefined;
+    return label.length > MAX_CONTEXT_CHARS ? `${label.slice(0, MAX_CONTEXT_CHARS - 1)}…` : label;
+  }
+
+  for (const [groupKey, group] of groups) {
+    const fromWalk = group.map(({ node }) => trim(walkCandidate(node)));
+
+    // Falling back only when the walk's answer is useless is deliberate. On
+    // Hacker News the walk *does* find something for all thirty `hide` links —
+    // the page name, "Hacker News" — which is true of every one of them. Left
+    // as-is it satisfied the `??` and pre-empted the row text, then lost to the
+    // check below, so the group ended up with no labels at all (issue #44).
+    const chosen = distinguishes(fromWalk)
+      ? fromWalk
+      : group.map(({ index }) => trim(precedingRowText(nodes, index, groupKey)));
+
+    if (!distinguishes(chosen)) continue;
+
+    for (let i = 0; i < group.length; i++) {
+      const label = chosen[i];
+      const target = group[i]?.node;
+      if (label === undefined || target === undefined) continue;
+      target.context = label;
+    }
   }
 }
 
