@@ -582,3 +582,11 @@ that step's action, so comparing it with the previous step's answers "did the
 last action change anything?") and what keeps `windowedMessages` pairing turns
 correctly. Cost is 11-13 tokens per retained turn, roughly 1% of what AC-AG11
 saved.
+
+---
+
+## MCP-16 — element state reaches the host (issue #43)
+
+`observe` reported handle/role/name/value/context and nothing else, so a host could not tell a disabled button from an enabled one: it clicked, got `ok`, and nothing happened. The engine had the state all along — `agent/index.ts`'s `formatNode()` renders it and the MCP surfaces did not.
+
+Both now render it, omitting `enabled: true` because it is stamped on every interactive node and printing it spends tokens per line to say "ordinary" (the AC-S6 reasoning). `selected` was in `NodeState` and rendered by neither surface, so an option already chosen looked identical to one that was not; `formatNode()` is fixed too.

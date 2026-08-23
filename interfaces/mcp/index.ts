@@ -19,7 +19,7 @@ import { createEngine } from '../../engine/index.js';
 import type { EngineOptions, SepiaEngine } from '../../engine/index.js';
 import { dispatchBatch, parseBatch, MAX_BATCH_STEPS } from '../../actions/index.js';
 import { redactCompactView } from '../../privacy/index.js';
-import type { CompactView } from '../../types/index.js';
+import type { CompactView, NodeState } from '../../types/index.js';
 
 /**
  * Sepia's own version, reported to the host during initialize.
@@ -83,6 +83,41 @@ const AMBIGUITY_WARNING =
 
 // ── Result rendering ─────────────────────────────────────────────────────────
 
+/**
+ * The part of a node's state worth spending tokens on.
+ *
+ * `enabled: true` is stamped on every interactive node, so printing it would
+ * say "ordinary" once per line — the same reasoning that strips it under
+ * `minimal` verbosity (AC-S6). Everything else changes what an action means or
+ * whether it will do anything at all, and a host that cannot see it clicks a
+ * disabled button, gets `ok`, and wonders why nothing happened (issue #43).
+ */
+function meaningfulState(state: NodeState | undefined): Record<string, boolean> | undefined {
+  if (state === undefined) return undefined;
+  const out: Record<string, boolean> = {};
+  if (state.enabled === false) out['enabled'] = false;
+  if (state.checked !== undefined) out['checked'] = state.checked;
+  if (state.required === true) out['required'] = true;
+  if (state.expanded !== undefined) out['expanded'] = state.expanded;
+  if (state.selected === true) out['selected'] = true;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Render that state the way the built-in agent does, so both surfaces read alike. */
+function stateLabel(state: NodeState | undefined): string {
+  const meaningful = meaningfulState(state);
+  if (meaningful === undefined) return '';
+  const parts: string[] = [];
+  if (meaningful['enabled'] === false) parts.push('disabled');
+  if (meaningful['checked'] !== undefined)
+    parts.push(meaningful['checked'] ? 'checked' : 'unchecked');
+  if (meaningful['required'] === true) parts.push('required');
+  if (meaningful['expanded'] !== undefined)
+    parts.push(meaningful['expanded'] ? 'expanded' : 'collapsed');
+  if (meaningful['selected'] === true) parts.push('selected');
+  return parts.length > 0 ? ` (${parts.join(', ')})` : '';
+}
+
 /** Render a compact view as the indented outline a model reads. */
 function renderView(view: CompactView): string {
   const lines = [`URL: ${view.url}`, `Title: ${view.title}`, ''];
@@ -91,7 +126,7 @@ function renderView(view: CompactView): string {
     const handle = n.handle ? `[${n.handle}] ` : '';
     const value = n.value ? ` "${n.value}"` : '';
     const context = n.context ? ` (${n.context})` : '';
-    lines.push(`${indent}${handle}${n.role} "${n.name}"${value}${context}`);
+    lines.push(`${indent}${handle}${n.role} "${n.name}"${value}${context}${stateLabel(n.state)}`);
   }
   return lines.join('\n');
 }
@@ -271,6 +306,12 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
               .string()
               .optional()
               .describe('Nearby text distinguishing controls that share a name'),
+            state: z
+              .record(z.boolean())
+              .optional()
+              .describe(
+                'Only state that is not the default: disabled, checked, required, expanded, selected',
+              ),
           }),
         ),
       },
@@ -298,6 +339,9 @@ export function createMcpServer(opts: McpServerOptions = {}): SepiaMcpServer {
               name: n.name,
               ...(n.value !== undefined ? { value: n.value } : {}),
               ...(n.context !== undefined ? { context: n.context } : {}),
+              ...(meaningfulState(n.state) !== undefined
+                ? { state: meaningfulState(n.state) }
+                : {}),
             })),
           },
         };
