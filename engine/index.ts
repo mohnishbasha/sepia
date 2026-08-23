@@ -233,7 +233,7 @@ function countNodes(node: AXSnapshot): number {
 // Fetch the full AX tree via CDP and convert directly to AXSnapshot.
 // The caller owns the session lifetime — attaching and detaching per call cost
 // a round trip on every observation.
-async function getAXSnapshot(
+export async function getAXSnapshot(
   client: CDPSession,
   frameOptions?: { frames: Frame[]; register: (frameId: string, frame: Frame) => void },
 ): Promise<AXSnapshot | null> {

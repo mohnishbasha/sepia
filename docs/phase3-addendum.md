@@ -722,3 +722,37 @@ profile is the browser and there is nothing to share.
 about 67% of it, and the saving compounds with volume. `/metrics` reports
 `pooledBrowsers`, and the pool is closed on the server's `close` event —
 warm browsers should outlive a request, never the server.
+
+---
+
+## AC-S13 — a corpus that can fail (issue #22)
+
+The committed corpus was five hand-written fixtures: 51, 72, 80, 99 and 111
+tokens, against gates of median ≤ 900 and max ≤ 1500. Eleven times the
+headroom. A budget suite that cannot fail is decoration, and this one measured
+pages an order of magnitude smaller than anything the engine actually meets.
+
+`scripts/capture-corpus.mts` now captures twenty real pages — Hacker News front,
+newest and ask; two Wikipedia articles and the portal; a form and an index from
+httpbin; two ARIA APG pages and the WAI home; a GitHub repo and issue list; two
+IANA pages; an RFC; MDN; nodejs.org; and two trivial pages as a floor. They span
+**13 to 79,328 tokens**, which is the range the serializer is asked to work over.
+
+**The gate is per page, not aggregate.** A fixture is a frozen snapshot, so its
+token count can only move when the serializer moves — that is precisely the
+regression worth catching. An aggregate median or max would let a page doubling
+in size hide behind nineteen that did not change. Each capture records its
+`baselineTokens`, and a page may grow 15% before the suite complains.
+
+Deliberate growth is still allowed; it just has to be _declared_, by re-running
+the capture script so the new numbers land in a diff and get reviewed. A change
+that inflates every page by a quarter should be a visible line in review, not a
+silent cost.
+
+Verified by injecting a serializer bloat: **19 of 20 pages fail**. Under the old
+corpus, nothing did.
+
+Fixtures are gzipped — 18 MB of JSON compresses to 0.7 MB, and a committed
+corpus should not cost every clone 18 MB. The five original synthetic fixtures
+stay: AC-S1/AC-S2 were calibrated against them and other suites reference them
+by name.
