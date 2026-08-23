@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { createEngine } from '../engine/index.js';
-import type { EngineOptions } from '../engine/index.js';
+import type { EngineOptions, BrowserPool } from '../engine/index.js';
 import {
   parseAction,
   dispatch,
@@ -219,7 +219,16 @@ function resolveTokens(
 const MAX_RETRY_BACKOFF_MS = 30_000;
 
 // Agent factory
-export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
+/**
+ * Optional collaborators. `browserPool` lets a long-lived caller — the HTTP
+ * server — amortise browser startup across runs (AC-H1); without one the agent
+ * launches and closes its own, exactly as before.
+ */
+export interface AgentDeps {
+  browserPool?: BrowserPool;
+}
+
+export function createAgent(rawConfig: SepiaConfig, deps: AgentDeps = {}): SepiaAgent {
   // Normalize whatever we were handed. createAgent is public API — the SDK
   // passes caller-built objects straight through — so bounding only at the CLI
   // and HTTP edges left this path unprotected (SR-12).
@@ -283,6 +292,12 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
             : {}),
         };
       }
+      // A named persistent profile *is* the browser, so there is nothing to
+      // borrow; that path keeps launching its own.
+      const pool = engineOpts.profileDir === undefined ? deps.browserPool : undefined;
+      const borrowed = pool !== undefined ? await pool.acquire() : undefined;
+      if (borrowed !== undefined) engineOpts.browser = borrowed;
+
       const engine = await createEngine(engineOpts);
 
       const client = new OpenAI({
@@ -760,6 +775,9 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
         }
       } finally {
         await engine.close();
+        // Returned only after the context is disposed, so the next borrower
+        // cannot see this session's cookies or storage.
+        if (borrowed !== undefined && pool !== undefined) pool.release(borrowed);
       }
 
       return {
