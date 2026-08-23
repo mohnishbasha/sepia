@@ -15,7 +15,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { makeMockEngine } from '../helpers/agent-harness.js';
+import { makeMockEngine, makeView } from '../helpers/agent-harness.js';
+import type { CompactNode } from '../../types/index.js';
 import type { SepiaEngine } from '../../engine/index.js';
 import type * as EngineModule from '../../engine/index.js';
 
@@ -387,6 +388,78 @@ describe('MCP-13 — error messages', () => {
 
     expect(res.isError).toBe(true);
     expect(JSON.stringify(res.content)).not.toContain('/Users/someone');
+  });
+});
+
+// ── MCP-16 — element state reaches the host ──────────────────────────────────
+
+describe('MCP-16 — element state', () => {
+  // `observe` reported handle/role/name/value/context and nothing else, so a
+  // host could not tell a disabled button from an enabled one: it clicked,
+  // got `ok`, and nothing happened. The engine had the state all along — the
+  // built-in agent renders it, the MCP surfaces did not (issue #43).
+  async function outlineFor(nodes: CompactNode[]): Promise<string> {
+    await connect();
+    vi.mocked(engine.observe).mockResolvedValue(makeView(nodes));
+    const res = await client.callTool({ name: 'observe', arguments: {} });
+    return JSON.stringify((res as { content: { text: string }[] }).content);
+  }
+
+  it('marks a disabled control', async () => {
+    const text = await outlineFor([
+      { handle: 'e1', role: 'button', name: 'Pay', indent: 0, state: { enabled: false } },
+    ]);
+
+    expect(text).toContain('disabled');
+  });
+
+  it('distinguishes checked from unchecked', async () => {
+    const text = await outlineFor([
+      { handle: 'e1', role: 'checkbox', name: 'Bacon', indent: 0, state: { checked: true } },
+      { handle: 'e2', role: 'checkbox', name: 'Onion', indent: 0, state: { checked: false } },
+    ]);
+
+    expect(text).toContain('checked');
+    expect(text).toContain('unchecked');
+  });
+
+  it('marks required, expanded and selected', async () => {
+    const text = await outlineFor([
+      { handle: 'e1', role: 'textbox', name: 'Email', indent: 0, state: { required: true } },
+      { handle: 'e2', role: 'button', name: 'Menu', indent: 0, state: { expanded: false } },
+      { handle: 'e3', role: 'option', name: 'Large', indent: 0, state: { selected: true } },
+    ]);
+
+    expect(text).toContain('required');
+    expect(text).toContain('collapsed');
+    // `selected` is in NodeState and was rendered by neither surface.
+    expect(text).toContain('selected');
+  });
+
+  it('says nothing for a control that is merely enabled', async () => {
+    // `enabled: true` is stamped on every interactive node; printing it would
+    // spend tokens on each line to say "ordinary" (the AC-S6 reasoning).
+    const text = await outlineFor([
+      { handle: 'e1', role: 'button', name: 'Go', indent: 0, state: { enabled: true } },
+    ]);
+
+    expect(text).not.toContain('enabled');
+    expect(text).toContain('button');
+  });
+
+  it('carries state in the structured output too', async () => {
+    await connect();
+    vi.mocked(engine.observe).mockResolvedValue(
+      makeView([
+        { handle: 'e1', role: 'button', name: 'Pay', indent: 0, state: { enabled: false } },
+      ]),
+    );
+
+    const res = (await client.callTool({ name: 'observe', arguments: {} })) as {
+      structuredContent?: { nodes: Array<{ state?: Record<string, boolean> }> };
+    };
+
+    expect(res.structuredContent?.nodes[0]?.state).toMatchObject({ enabled: false });
   });
 });
 

@@ -136,6 +136,9 @@ function formatNode(node: CompactNode, indent: number = 0): string {
         node.state.checked !== undefined ? (node.state.checked ? 'checked' : 'unchecked') : null,
         node.state.required ? 'required' : null,
         node.state.expanded !== undefined ? (node.state.expanded ? 'expanded' : 'collapsed') : null,
+        // `selected` is in NodeState and reached neither surface, so an option
+        // or tab already chosen looked identical to one that was not (#43).
+        node.state.selected ? 'selected' : null,
       ]
         .filter(Boolean)
         .join(', ')})`
