@@ -9,12 +9,18 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Run and session ids came from `Math.random()`.** `sessionId` names an on-disk profile directory via `createNamedProfile()`, so a predictable id lets someone guess or collide with another session's profile path, and both ids travel in traces that may be shared. They now come from `randomBytes`. (CodeQL `js/insecure-randomness`)
+- **HTTP authentication is now default-deny.** It was opt-in per route: `POST /run` called `checkAuth()` inside its own branch and the others simply never did, which made the security decision a property of where someone remembered to put a call — a route added later would have been public by omission. The decision now happens once before dispatch against an explicit `PUBLIC_ROUTES` list, so an unlisted route is refused rather than served, and an unauthenticated caller gets 401 instead of learning which routes exist. `/health`, `/` and `/metrics` stay public, now as a listed choice rather than an accident. (SR-14, CodeQL `js/user-controlled-bypass`)
+
 ### Added
 
 - **`make e2e`** — chains the three paths a user actually takes and checks that each stage's output is usable by the next: compile, pack, install the tarball into a clean project, drive the packed MCP server over real stdio, render the Helm chart, build the image and curl `/health` in the running container. The individual targets existed; nothing joined them, so nothing noticed when a link broke. Stages needing a daemon skip with a message rather than failing, and skips are reported. (issue #1)
 
 ### Fixed
 
+- **Dead bookkeeping in `buildState()`.** `hasState` was set true on every branch, so the `undefined` return was unreachable and the final conditional trivially true. Removed; behaviour is unchanged. (CodeQL `js/trivial-conditional`)
 - **The Docker image did not build.** `prepare: husky` runs on every install including `pnpm install --frozen-lockfile --prod`, where husky is absent by definition, so the `prod-deps` stage failed with `husky: not found`. It went unnoticed because `docker.yml` triggered only on `v*` tags and none had been pushed — the image had never been built in CI at all. `prepare` is now `husky || true`, which also unbreaks any consumer running a production install, and the workflow builds the image on every pull request (without pushing) and asserts the container serves `/health`. Found by `make e2e`. (issue #1)
 
 ### Changed

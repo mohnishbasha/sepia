@@ -98,39 +98,25 @@ function hasInteractiveDescendant(node: AXSnapshot): boolean {
 /**
  * Build NodeState from an AX node.
  */
+/**
+ * The state block for a node.
+ *
+ * Always returns one: `enabled` is set on every branch, so the `hasState` flag
+ * this used to carry could never be false and the `undefined` return was
+ * unreachable — CodeQL called the final conditional trivially true, correctly.
+ * The return type keeps `undefined` because callers already handle it and
+ * narrowing it is a separate decision; what is gone is the dead bookkeeping
+ * that implied a case which never happened.
+ */
 function buildState(node: AXSnapshot): NodeState | undefined {
-  const state: NodeState = {};
-  let hasState = false;
+  const state: NodeState = { enabled: !node.disabled };
 
-  if (!node.disabled) {
-    state.enabled = true;
-    hasState = true;
-  } else {
-    state.enabled = false;
-    hasState = true;
-  }
+  if (node.checked === true) state.checked = true;
+  if (node.required) state.required = true;
+  if (node.expanded !== undefined) state.expanded = node.expanded;
+  if (node.selected !== undefined) state.selected = node.selected;
 
-  if (node.checked === true) {
-    state.checked = true;
-    hasState = true;
-  }
-
-  if (node.required) {
-    state.required = true;
-    hasState = true;
-  }
-
-  if (node.expanded !== undefined) {
-    state.expanded = node.expanded;
-    hasState = true;
-  }
-
-  if (node.selected !== undefined) {
-    state.selected = node.selected;
-    hasState = true;
-  }
-
-  return hasState ? state : undefined;
+  return state;
 }
 
 /**

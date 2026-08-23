@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import OpenAI from 'openai';
 import { createEngine } from '../engine/index.js';
 import type { EngineOptions, BrowserPool } from '../engine/index.js';
@@ -169,8 +170,17 @@ function formatCompactView(view: CompactView): string {
   return lines.join('\n');
 }
 
+/**
+ * A run or session identifier.
+ *
+ * `Math.random()` is not seeded for this. `sessionId` names an on-disk profile
+ * directory via `createNamedProfile()`, so a predictable id lets someone guess
+ * — or collide with — another session's profile path, and both ids appear in
+ * traces that may be shared. The timestamp suffix is kept because it makes ids
+ * roughly sortable when reading a pile of traces.
+ */
 function generateId(): string {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  return randomBytes(8).toString('hex') + Date.now().toString(36);
 }
 
 // Attempt to repair common SLM JSON formatting errors before giving up.
