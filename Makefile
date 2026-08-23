@@ -224,17 +224,7 @@ litellm-stop: ## Stop and remove the LiteLLM proxy container
 export-traces: ## Export RunTrace JSONL to ShareGPT and Alpaca formats
 	@: $${TRACE_FILE:?Usage: make export-traces TRACE_FILE=traces.jsonl OUT_DIR=out}
 	@: $${OUT_DIR:?Usage: make export-traces TRACE_FILE=traces.jsonl OUT_DIR=out}
-	mkdir -p $(OUT_DIR)
-	pnpm tsx -e "\
-	  import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'; \
-	  import { exportToShareGPT, exportToAlpaca, parseTraceJSONL } from './training/index.js'; \
-	  const traces = parseTraceJSONL(readFileSync('$(TRACE_FILE)', 'utf8')); \
-	  const pages = new Map(); \
-	  mkdirSync('$(OUT_DIR)', { recursive: true }); \
-	  writeFileSync('$(OUT_DIR)/sharegpt.jsonl', exportToShareGPT(traces, pages)); \
-	  writeFileSync('$(OUT_DIR)/alpaca.jsonl', exportToAlpaca(traces, pages)); \
-	  console.log('Exported', traces.length, 'traces to $(OUT_DIR)/'); \
-	"
+	pnpm tsx scripts/export-traces.mts "$(TRACE_FILE)" "$(OUT_DIR)"
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 

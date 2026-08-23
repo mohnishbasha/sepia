@@ -660,3 +660,33 @@ spec of its own about what is randomised and over what distribution. Inventing
 that inside a config cleanup would be guessing at a contract, and a knob that
 silently does nothing is exactly the "believed and absent" problem SR-13 was
 opened for.
+
+---
+
+## AC-TR1 — the training export can be run (issue #21)
+
+Two failures stacked on each other.
+
+`exportToShareGPT()` and `exportToAlpaca()` took `pageContents: Map<string,
+string[]>`, mapping a run id to per-step page text. Nothing produced it. The
+agent never recorded page content and `RunTrace` had no field for it, so the
+argument was unsatisfiable by construction and `make export-traces` passed an
+empty Map. Every sample came out with an empty `Current page:` section:
+structurally valid JSONL, and worthless, because the page is the input the
+sample exists to teach from.
+
+And the target itself never ran. `pnpm tsx -e "... import from
+'./training/index.js' ..."` could not resolve the module and exited
+`MODULE_NOT_FOUND` before writing a file, so the failure above was invisible.
+
+`StepTrace` now carries `pageContent`, set to the same redacted,
+injection-sanitised string the model was shown. It is opt-in via
+`privacy.recordPageContent` and off by default, for two reasons: it is bulky,
+and `sepia run` prints the trace to stdout, so recording it unconditionally
+would dump every page outline into the operator's terminal.
+
+The exports read it from the step and **skip a step that has none**. An empty
+dataset is the honest result when the runs were not instrumented; a dataset full
+of "given no page, click e1" is not. The Makefile target now runs
+`scripts/export-traces.mts`, reports the sample count, and says what to do when
+that count is zero.

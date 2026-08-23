@@ -43,6 +43,12 @@ export interface AgentConfig {
 
 export interface PrivacyConfig {
   telemetry: boolean;
+  /**
+   * Record the page each step saw onto its `StepTrace`, for the training
+   * export (AC-TR1). Off by default: the content is bulky and it is page
+   * content, so keeping it is a choice an operator makes deliberately.
+   */
+  recordPageContent?: boolean;
 }
 
 export interface SecurityConfig {
@@ -91,6 +97,7 @@ export const defaultConfig: SepiaConfig = {
   },
   privacy: {
     telemetry: false,
+    recordPageContent: false,
   },
   security: {
     robotsAwareness: false,
