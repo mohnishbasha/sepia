@@ -157,6 +157,16 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+/**
+ * Routes served without credentials.
+ *
+ * Listed rather than implied, so that publishing a route to the world is a
+ * decision someone made and a reviewer can see. `/metrics` stays here because
+ * probes and scrapers depend on it; that it exposes request and auth-failure
+ * counts is the trade being made knowingly.
+ */
+const PUBLIC_ROUTES: ReadonlySet<string> = new Set(['/', '/health', '/metrics']);
+
 export function startServer(opts: ServeOptions = {}): Server {
   const { port = 3000, maxConcurrent = 5 } = opts;
   const serverApiKey = opts.serverApiKey ?? process.env['SEPIA_SERVER_API_KEY'];
@@ -204,6 +214,13 @@ export function startServer(opts: ServeOptions = {}): Server {
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = req.url ?? '/';
 
+    // Default deny (SR-14). Authentication used to be opt-in per branch, which
+    // made it a property of where someone remembered to put the call: a route
+    // added later was public because nobody thought about it. Deciding once,
+    // against an explicit list, means the mistake falls the other way — an
+    // unlisted route is refused rather than served.
+    if (!PUBLIC_ROUTES.has(url) && !checkAuth(req, res)) return;
+
     if (req.method === 'GET' && (url === '/health' || url === '/')) {
       json(res, 200, { ok: true, version: '0.2.0', inflight, maxConcurrent });
       return;
@@ -224,7 +241,8 @@ export function startServer(opts: ServeOptions = {}): Server {
     }
 
     if (req.method === 'POST' && url === '/run') {
-      if (!checkAuth(req, res)) return;
+      // Authentication already happened above, for every route that is not on
+      // the public list.
       totalRequests++;
 
       // Claim the slot before any await, so concurrent requests cannot all pass
