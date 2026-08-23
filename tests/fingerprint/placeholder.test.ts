@@ -85,11 +85,14 @@ describe('fingerprint — browser tests', () => {
     await browser.close();
   }, 30_000);
 
-  // AC-F1: requires patched Chromium (make chromium-build)
-  it.todo('JA3 fingerprint matches Chrome 130 — requires patched Chromium (make chromium-build)');
-
-  // AC-F2: requires patched Chromium (make chromium-build)
-  it.todo('JA4 fingerprint matches Chrome 130 — requires patched Chromium (make chromium-build)');
+  // AC-F1/AC-F2 are blocked rather than deferred: `patches/` holds no `.patch`
+  // files, so there is nothing to build and TLS-level fingerprinting is
+  // unimplemented in this repository (issue #17). Stock Chromium presents a
+  // stock TLS handshake, so asserting a Chrome-matching JA3/JA4 here would test
+  // the assertion, not the product. What is tested below is the layer that does
+  // ship: JS and header coherence.
+  it.todo('AC-F1: JA3 matches Chrome — blocked, no TLS patch set in this repository');
+  it.todo('AC-F2: JA4 matches Chrome — blocked, no TLS patch set in this repository');
 
   // AC-F3: navigator.webdriver is undefined in a sepia-configured browser context
   it('AC-F3: navigator.webdriver probe passes in sepia-configured browser', async () => {

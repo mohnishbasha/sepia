@@ -1,8 +1,23 @@
 # Chromium patch set
 
-Sepia patches Chromium at the source level to achieve coherent, undetectable browser fingerprints. This directory contains ordered patch files applied to the ungoogled-chromium checkout.
+> **Status: not implemented. This directory contains no `.patch` files.**
+>
+> The stack below is a design, not something you can apply. `make patch` and
+> `make chromium-build` refuse to run rather than silently producing stock
+> Chromium and calling it patched (issue #17).
+>
+> **What this means in practice:** Sepia does not alter TLS. Its ClientHello is
+> whatever Playwright's Chromium sends, so JA3/JA4 fingerprints identify it as
+> ordinary headless Chrome and AC-F1/AC-F2 cannot pass from this repository.
+> They are blocked on missing source, not on build capacity.
+>
+> What _is_ implemented and tested is the JS and header layer: user-agent and
+> Client Hints coherence, `navigator.webdriver`, locale/timezone/viewport
+> agreement, and the probe suite in `tests/fingerprint/`. That defeats
+> script-level detection and does not defeat a TLS fingerprint. Anyone relying
+> on this against TLS-aware anti-bot systems should know that before they start.
 
-## Patch stack
+## Patch stack (design, unimplemented)
 
 | File                           | Purpose                                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------------------------ |
@@ -11,7 +26,9 @@ Sepia patches Chromium at the source level to achieve coherent, undetectable bro
 | `003-boring-ssl-ja3.patch`     | BoringSSL ClientHello construction — cipher suite order matches Chrome 130 on Linux x86_64 |
 | `004-profile-coherence.patch`  | UA string, Client Hints, canvas noise removal, WebGL renderer string, font enumeration     |
 
-Apply order is strict: 001 → 002 → 003 → 004.
+Apply order would be strict: 001 → 002 → 003 → 004. Patch 003 is the one that
+matters for JA3/JA4; the others address detection surfaces that the JS-level
+work already covers in part.
 
 ## Prerequisites
 

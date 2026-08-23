@@ -11,7 +11,7 @@ Phase 3 gate (from CLAUDE.md): **All AC-\* tests pass; spec matches code.**
 
 Current result at the end of Phase 3: 96 tests pass, 2 todo. After the post-Phase-3 hardening pass (§8) the suite stands at **231 pass, 2 todo**.
 
-The 2 todo items (AC-F1, AC-F2) are intentionally deferred — they require `make chromium-build` (BoringSSL-patched Chromium binary, not built in standard CI). Everything else passes.
+The 2 todo items (AC-F1, AC-F2) are **blocked, not deferred**: `patches/` contains no `.patch` files, so there is nothing for `make chromium-build` to apply and no patched binary can be produced from this repository (issue #17). TLS-level fingerprinting is unimplemented; what ships and is tested is JS and header level coherence. Everything else passes.
 
 ---
 

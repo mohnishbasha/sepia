@@ -124,6 +124,12 @@ security: ## SAST + SCA — fails on known-critical CVEs
 # ── Chromium patch set (M4) ───────────────────────────────────────────────────
 
 patch: ## Apply all patches to the Chromium checkout in patches/chromium/
+	@ls patches/*.patch >/dev/null 2>&1 || { \
+	  echo "No patches to apply: patches/ contains no .patch files."; \
+	  echo "TLS-level fingerprinting (JA3/JA4, AC-F1/AC-F2) is NOT implemented in"; \
+	  echo "this repository — see patches/README.md. What ships is JS and header"; \
+	  echo "level coherence only."; \
+	  exit 1; }
 	@echo "Applying patch set to patches/chromium/ ..."
 	@for p in patches/*.patch; do \
 	  echo "  applying $$p"; \
@@ -131,7 +137,13 @@ patch: ## Apply all patches to the Chromium checkout in patches/chromium/
 	done
 	@echo "All patches applied."
 
-chromium-build: ## Build patched Chromium binary → bin/chromium
+chromium-build: ## Build patched Chromium binary → bin/chromium (NOT AVAILABLE: no patch set)
+	@ls patches/*.patch >/dev/null 2>&1 || { \
+	  echo "Cannot build: patches/ contains no .patch files, so there is nothing to"; \
+	  echo "apply and the result would be stock Chromium with stock TLS."; \
+	  echo "JA3/JA4 fingerprinting (AC-F1/AC-F2) is unimplemented here — see"; \
+	  echo "patches/README.md for what a patch set would have to do."; \
+	  exit 1; }
 	@echo "Building patched Chromium (this takes ~4-8 hours on first run)..."
 	@echo "See patches/README.md for prerequisites."
 	cd patches/chromium && ninja -C out/Release chrome
