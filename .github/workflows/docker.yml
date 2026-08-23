@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  # Build-only on every change to the image or what goes into it. The image had
+  # never been built in CI, because tags were the only trigger and none had been
+  # pushed — so a `prepare` script that broke `pnpm install --prod` sat unnoticed
+  # (issue #1). Nothing is pushed to the registry here.
+  pull_request:
+    branches: [master, main]
 
 env:
   REGISTRY: ghcr.io
@@ -13,8 +19,45 @@ env:
   BUILDCACHE_REF: ghcr.io/${{ github.repository }}:buildcache
 
 jobs:
+  # Proves the image still builds and serves, without publishing anything.
+  build-check:
+    name: Build image (no push)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          push: false
+          load: true
+          tags: sepia:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Container serves /health
+        run: |
+          cid=$(docker run -d -p 18899:3000 -e SEPIA_SERVER_API_KEY=ci-key sepia:ci)
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18899/health; then ok=1; break; fi
+            sleep 1
+          done
+          docker logs "$cid" | tail -20
+          docker rm -f "$cid" >/dev/null
+          [ -n "${ok:-}" ] || { echo "::error::image built but did not serve /health"; exit 1; }
+
   build-push:
     name: Build and push OCI image
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

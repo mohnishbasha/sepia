@@ -9,6 +9,14 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`make e2e`** — chains the three paths a user actually takes and checks that each stage's output is usable by the next: compile, pack, install the tarball into a clean project, drive the packed MCP server over real stdio, render the Helm chart, build the image and curl `/health` in the running container. The individual targets existed; nothing joined them, so nothing noticed when a link broke. Stages needing a daemon skip with a message rather than failing, and skips are reported. (issue #1)
+
+### Fixed
+
+- **The Docker image did not build.** `prepare: husky` runs on every install including `pnpm install --frozen-lockfile --prod`, where husky is absent by definition, so the `prod-deps` stage failed with `husky: not found`. It went unnoticed because `docker.yml` triggered only on `v*` tags and none had been pushed — the image had never been built in CI at all. `prepare` is now `husky || true`, which also unbreaks any consumer running a production install, and the workflow builds the image on every pull request (without pushing) and asserts the container serves `/health`. Found by `make e2e`. (issue #1)
+
 ### Changed
 
 - **TLS-level fingerprinting is formally dropped rather than implied.** `patches/README.md` documented a four-patch BoringSSL stack while `patches/` held no `.patch` files, so `make patch` iterated over nothing and reported success and `make chromium-build` would have produced stock Chromium. Both now refuse to run and say why. The README, `CLAUDE.md` and the addendum state plainly that Sepia does not alter TLS — its ClientHello is Playwright's Chromium, so JA3/JA4 identify it as ordinary headless Chrome — and that AC-F1/AC-F2 are blocked on missing source rather than build capacity. What ships and is tested is JS and header level coherence, which defeats script-level detection and does not defeat a TLS fingerprint; anyone pointing this at TLS-aware anti-bot systems should know that first. (issue #17)
