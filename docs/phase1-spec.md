@@ -386,7 +386,6 @@ interface SepiaConfig {
     profile: string; // fingerprint preset, e.g. "chrome-130-linux-x86_64"
     headless: boolean; // default: true
     ephemeral: boolean; // default: true
-    humanTiming: boolean; // default: false — typing/pointer jitter
   };
   agent: {
     maxSteps: number; // default: 50

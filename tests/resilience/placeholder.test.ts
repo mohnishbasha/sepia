@@ -45,7 +45,6 @@ function makeBaseConfig(overrides?: Partial<{ maxSteps: number; maxTokensPerRun:
       profile: 'default',
       headless: true,
       ephemeral: true,
-      humanTiming: false,
     },
     agent: {
       maxSteps: overrides?.maxSteps ?? 10,

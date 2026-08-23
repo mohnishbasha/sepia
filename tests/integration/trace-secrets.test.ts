@@ -97,7 +97,7 @@ describe('AC-A4 / AC-P4 — trace secrets redaction', () => {
         apiKey: 'test',
         maxTokensPerStep: 10000,
       },
-      browser: { profile: 'default', headless: true, ephemeral: true, humanTiming: false },
+      browser: { profile: 'default', headless: true, ephemeral: true },
       agent: {
         maxSteps: 10,
         maxTokensPerRun: 100_000,
@@ -183,7 +183,7 @@ describe('AC-A4 / AC-P4 — trace secrets redaction', () => {
         apiKey: 'test',
         maxTokensPerStep: 10000,
       },
-      browser: { profile: 'default', headless: true, ephemeral: true, humanTiming: false },
+      browser: { profile: 'default', headless: true, ephemeral: true },
       agent: {
         maxSteps: 10,
         maxTokensPerRun: 100_000,

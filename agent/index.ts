@@ -389,7 +389,11 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
             const callParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
               model: config.model.model,
               messages: attemptMessages,
-              max_tokens: 1024,
+              // `model.maxTokensPerStep` was declared, defaulted, bounded and
+              // documented while this was hardcoded, so setting it did nothing
+              // (issue #20). 1024 is also tight for a reasoning model, which
+              // spends part of the budget before it writes any JSON.
+              max_tokens: config.model.maxTokensPerStep,
             };
             if (config.model.jsonMode === true) {
               callParams.response_format = { type: 'json_object' };

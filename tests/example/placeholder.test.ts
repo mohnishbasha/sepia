@@ -80,7 +80,7 @@ describe('example: research-assistant', () => {
         apiKey: 'test',
         maxTokensPerStep: 100_000,
       },
-      browser: { profile: 'default', headless: true, ephemeral: true, humanTiming: false },
+      browser: { profile: 'default', headless: true, ephemeral: true },
       agent: {
         maxSteps: 10,
         maxTokensPerRun: 50_000,
@@ -152,7 +152,7 @@ describe('example: research-assistant', () => {
         apiKey: 'test',
         maxTokensPerStep: 100_000,
       },
-      browser: { profile: 'default', headless: true, ephemeral: true, humanTiming: false },
+      browser: { profile: 'default', headless: true, ephemeral: true },
       agent: {
         maxSteps: 10,
         maxTokensPerRun: 50_000,
@@ -214,7 +214,7 @@ describe('example: research-assistant', () => {
         apiKey: 'test',
         maxTokensPerStep: 1000,
       },
-      browser: { profile: 'default', headless: true, ephemeral: true, humanTiming: false },
+      browser: { profile: 'default', headless: true, ephemeral: true },
       agent: {
         maxSteps: 5,
         maxTokensPerRun: 10_000,

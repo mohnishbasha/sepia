@@ -20,7 +20,6 @@ export interface BrowserConfig {
   profile: string;
   headless: boolean;
   ephemeral: boolean;
-  humanTiming: boolean;
   /** Directory where named persistent profiles are stored. Required when ephemeral=false. */
   profileStorePath?: string;
   /** Cap on each page-settle wait, in ms. Bounds observation cost on never-idle pages. */
@@ -64,7 +63,10 @@ export const defaultConfig: SepiaConfig = {
   model: {
     endpoint: 'https://api.anthropic.com/v1',
     model: 'claude-sonnet-4-6',
-    maxTokensPerStep: 100_000,
+    // Sent as `max_tokens` on every call, so it must be a value providers
+    // accept: the old 100_000 was never sent anywhere and would be rejected
+    // outright by most. Generous enough for a reasoning model's overhead.
+    maxTokensPerStep: 8_192,
     jsonMode: false,
     promptStyle: 'default',
     tokenEstimation: 'auto',
@@ -75,7 +77,6 @@ export const defaultConfig: SepiaConfig = {
     profile: 'chrome-149-linux-x86_64',
     headless: true,
     ephemeral: true,
-    humanTiming: false,
     settleTimeoutMs: 1_500,
   },
   agent: {
