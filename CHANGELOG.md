@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **TLS-level fingerprinting is formally dropped rather than implied.** `patches/README.md` documented a four-patch BoringSSL stack while `patches/` held no `.patch` files, so `make patch` iterated over nothing and reported success and `make chromium-build` would have produced stock Chromium. Both now refuse to run and say why. The README, `CLAUDE.md` and the addendum state plainly that Sepia does not alter TLS — its ClientHello is Playwright's Chromium, so JA3/JA4 identify it as ordinary headless Chrome — and that AC-F1/AC-F2 are blocked on missing source rather than build capacity. What ships and is tested is JS and header level coherence, which defeats script-level detection and does not defeat a TLS fingerprint; anyone pointing this at TLS-aware anti-bot systems should know that first. (issue #17)
+
 ### Fixed
 
 - **The token-budget corpus could not fail.** `fixtures/corpus/` held five hand-written fixtures measuring 51–111 tokens against gates of median ≤ 900 and max ≤ 1500 — eleven times the headroom, so no plausible serializer change could trip them. Twenty real pages are now captured alongside them via `scripts/capture-corpus.mts`, spanning 13 to 79,328 tokens across link lists, long articles, forms, specs, docs and app pages. Each carries the token count it was captured at, and the gate is **per page**: a frozen snapshot's size can only move when the serializer moves, and an aggregate threshold would let a doubling on one page hide behind nineteen that did not change. Verified by injecting a serializer bloat — 19 of 20 pages fail, where the old corpus caught nothing. Fixtures are gzipped: 18 MB of JSON becomes 0.7 MB, so a committed corpus does not cost every clone 18 MB. (AC-S13, issue #22)

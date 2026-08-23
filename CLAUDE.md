@@ -132,7 +132,7 @@ A PR is ready to merge when:
 | Mutation test cases        | `fixtures/mutation/`                                           |
 | Fingerprint probe payloads | `fixtures/fingerprint/`                                        |
 | E2E fixture pages          | `fixtures/pages/`                                              |
-| Chromium patch set         | `patches/*.patch`                                              |
+| Chromium patch set         | not in this repository — see `patches/README.md` (issue #17)   |
 | Patched Chromium source    | `patches/chromium/` (not committed; see patches/README.md)     |
 | Compiled browser binary    | `bin/chromium` (not committed; built by `make chromium-build`) |
 | Example app                | `examples/research-assistant/`                                 |
@@ -141,7 +141,15 @@ A PR is ready to merge when:
 
 ## Chromium build notes
 
-`make chromium-build` applies a 4-layer patch stack to Chromium source and compiles from scratch. This is the only path to valid JA3/JA4 fingerprints (AC-F1, AC-F2).
+**No patch set is committed.** `patches/` holds a README describing what a
+four-layer stack would need to do and no `.patch` files, so `make patch` and
+`make chromium-build` refuse to run rather than silently producing stock
+Chromium. TLS-level fingerprinting (JA3/JA4, AC-F1/AC-F2) is therefore
+**unimplemented**, not merely unbuilt: what ships is JS and header level
+coherence, which is what the fingerprint suite actually tests.
+
+The rest of this section describes what building such a stack would involve,
+for whoever takes it on.
 
 **Why it takes hours:** Chromium is ~35 million lines of C++. A full build on a 16-core machine with 32 GB RAM takes 2–4 hours. The BoringSSL patch requires a full rebuild — incremental builds don't help on a fresh clone.
 
@@ -149,4 +157,4 @@ A PR is ready to merge when:
 
 - **Prebuilt binary cache** — Build once, upload `bin/chromium` to a private artifact store (e.g. S3 + CloudFront), cache in CI with a hash of `patches/`. The `make chromium-build` target supports `CHROMIUM_CACHE_URL` env var for this workflow.
 - **sccache / goma** — Distributed compilation cache. Cuts rebuild time to ~20 min if a warm cache exists.
-- **Deferred status** — AC-F1/AC-F2 remain `.todo` until `make chromium-build` runs. All other 94 tests pass on standard CI runners without the custom binary.
+- **Status** — AC-F1/AC-F2 are `.todo` and will stay that way until a patch set exists to build. They are blocked on missing source, not on CI capacity. Every other test passes on a standard runner.
