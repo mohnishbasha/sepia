@@ -160,7 +160,13 @@ jobs:
         uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112  # v4.3.0
 
       - name: Install helm-unittest plugin
-        run: helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false
+        # `--verify` exists only on some helm builds: the runner's helm changed
+        # under us and started rejecting it as an unknown flag, turning master
+        # red on a commit that touched neither helm nor CI. Try it, fall back
+        # without it, so the step does not depend on which helm the image ships.
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false \
+            || helm plugin install https://github.com/helm-unittest/helm-unittest
 
       - name: Helm lint
         run: helm lint helm/sepia
