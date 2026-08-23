@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { createAgent } from '../../agent/index.js';
+import { createBrowserPool } from '../../engine/index.js';
 import { mergeConfig } from '../../config/index.js';
 import type { SepiaConfig } from '../../config/index.js';
 import type { RunTrace } from '../../agent/index.js';
@@ -179,6 +180,12 @@ export function startServer(opts: ServeOptions = {}): Server {
   let totalUnauthorized = 0;
   const startMs = Date.now();
 
+  // Warm browsers shared across requests (AC-H1). Each request still builds its
+  // own context inside one, so sessions stay isolated; what is saved is process
+  // startup, which was previously paid in full on every POST /run and bounded
+  // throughput by launches rather than by the model.
+  const browserPool = createBrowserPool({ maxSize: maxConcurrent });
+
   function checkAuth(req: IncomingMessage, res: ServerResponse): boolean {
     if (!serverApiKey) return true;
     const auth = req.headers['authorization'];
@@ -211,6 +218,7 @@ export function startServer(opts: ServeOptions = {}): Server {
         totalRequests,
         totalErrors,
         totalUnauthorized,
+        pooledBrowsers: browserPool.size(),
       });
       return;
     }
@@ -279,7 +287,7 @@ export function startServer(opts: ServeOptions = {}): Server {
                   security: { ...baseConfig.security, ...runConfig.security },
                 })
               : baseConfig;
-          const agent = createAgent(config);
+          const agent = createAgent(config, { browserPool });
           const trace: RunTrace = await agent.run(goal);
           if (trace.outcome !== 'success') totalErrors++;
           json(res, trace.outcome === 'success' ? 200 : 422, trace);
@@ -305,6 +313,11 @@ export function startServer(opts: ServeOptions = {}): Server {
       `[sepia] http server listening on :${String(port)} (maxConcurrent=${String(maxConcurrent)}` +
         `${serverApiKey ? '' : ', UNAUTHENTICATED'})\n`,
     );
+  });
+
+  // Warm browsers outlive a request by design; they must not outlive the server.
+  server.on('close', () => {
+    void browserPool.close();
   });
 
   return server;

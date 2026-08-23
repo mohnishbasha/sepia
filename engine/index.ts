@@ -65,6 +65,16 @@ export interface EngineOptions {
   maxHandles?: number;
   /** Fingerprint preset id. When set, the profile is applied and validated before use. */
   profile?: string;
+  /**
+   * A pooled browser to borrow rather than launching one (AC-H1).
+   *
+   * The engine creates its own `BrowserContext` inside it, so cookies, storage
+   * and cache stay per-session exactly as with a private browser, and `close()`
+   * disposes only that context — the browser goes back to whoever owns it.
+   * Ignored when `profileDir` is set: a persistent profile *is* the browser, so
+   * there is nothing to share.
+   */
+  browser?: Browser;
   security?: {
     rateLimitMs?: number;
     robotsAwareness?: boolean;
@@ -429,6 +439,95 @@ export function cssQuote(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
+/**
+ * A pool of warm browser processes (AC-H1).
+ *
+ * `serve` launched a Chromium per request and closed it in a `finally`, so
+ * every request paid full process startup and throughput was bounded by
+ * launches rather than by the model (issue #13).
+ *
+ * What is pooled is the *process*, not the session. Each borrower makes its own
+ * `BrowserContext`, which is what carries cookies, storage and cache — so
+ * requests stay as isolated from one another as they were when each got its own
+ * process, and the cross-profile guarantees still hold. Pooling the context
+ * instead would amortise a little more and leak everything that matters.
+ *
+ * Note this is unrelated to `createSessionPool()` in `privacy/`, which is a
+ * counting semaphore and amortises nothing.
+ */
+export interface BrowserPool {
+  /** Borrow a browser, launching one if the pool is below its ceiling. */
+  acquire: () => Promise<Browser>;
+  /** Return a browser. A closed or crashed one is discarded rather than reused. */
+  release: (browser: Browser) => void;
+  /** Close every pooled browser. Safe to call more than once. */
+  close: () => Promise<void>;
+  /** How many processes are currently held. Exposed for tests and /metrics. */
+  size: () => number;
+}
+
+export function createBrowserPool(opts?: {
+  maxSize?: number;
+  headless?: boolean;
+  executablePath?: string;
+}): BrowserPool {
+  const maxSize = opts?.maxSize !== undefined && opts.maxSize > 0 ? opts.maxSize : 1;
+  const idle: Browser[] = [];
+  let live = 0;
+  let closed = false;
+
+  return {
+    async acquire(): Promise<Browser> {
+      if (closed) throw new Error('browser pool is closed');
+
+      // Skip any that died while idle — a crashed browser is not a warm one.
+      while (idle.length > 0) {
+        const candidate = idle.pop();
+        if (candidate !== undefined && candidate.isConnected()) return candidate;
+        live = Math.max(0, live - 1);
+      }
+
+      const inContainer = existsSync('/.dockerenv') || process.env['SEPIA_NO_SANDBOX'] === '1';
+      const launchOpts: Parameters<typeof chromium.launch>[0] = {
+        headless: opts?.headless ?? true,
+        args: inContainer ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+      };
+      if (opts?.executablePath !== undefined) launchOpts.executablePath = opts.executablePath;
+      const browser = await chromium.launch(launchOpts);
+      live++;
+      return browser;
+    },
+
+    release(browser: Browser): void {
+      if (closed || !browser.isConnected()) {
+        void browser.close().catch(() => {});
+        live = Math.max(0, live - 1);
+        return;
+      }
+      // Above the ceiling the process is closed rather than kept: the cap is
+      // what stops a burst of concurrent requests leaving a pile of idle
+      // Chromiums behind for the rest of the server's life.
+      if (idle.length >= maxSize) {
+        void browser.close().catch(() => {});
+        live = Math.max(0, live - 1);
+        return;
+      }
+      idle.push(browser);
+    },
+
+    async close(): Promise<void> {
+      closed = true;
+      const pending = idle.splice(0);
+      live = 0;
+      await Promise.all(pending.map((b) => b.close().catch(() => {})));
+    },
+
+    size(): number {
+      return live;
+    },
+  };
+}
+
 // Engine factory — Phase 2 M3
 export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
   const headless = opts?.headless ?? true;
@@ -463,6 +562,12 @@ export async function createEngine(opts?: EngineOptions): Promise<SepiaEngine> {
       ...(opts.executablePath !== undefined ? { executablePath: opts.executablePath } : {}),
       ...contextOpts,
     });
+  } else if (opts?.browser !== undefined) {
+    // Borrowed: a fresh context gives this session its own cookie jar and
+    // storage, while the expensive part — the browser process — is already
+    // running. `browser` stays undefined on purpose so `close()` disposes the
+    // context and leaves the process to its owner.
+    context = await opts.browser.newContext(contextOpts);
   } else {
     const launchOpts: Parameters<typeof chromium.launch>[0] = { headless, args: sandboxArgs };
     if (opts?.executablePath !== undefined) launchOpts.executablePath = opts.executablePath;

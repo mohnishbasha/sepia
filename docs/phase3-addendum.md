@@ -690,3 +690,35 @@ dataset is the honest result when the runs were not instrumented; a dataset full
 of "given no page, click e1" is not. The Makefile target now runs
 `scripts/export-traces.mts`, reports the sample count, and says what to do when
 that count is zero.
+
+---
+
+## AC-H1 — warm browsers for `serve` (issue #13)
+
+Every `POST /run` called `createAgent().run()`, which launched Chromium and
+closed it in a `finally`. At `maxConcurrent: 5` the ceiling was process
+launches, not the model, so `serve` bought network access and backpressure but
+not amortised startup.
+
+One correction to the issue as filed: `createSessionPool()` in `privacy/` is not
+"exactly this". It is a counting semaphore with no browsers in it, and the HTTP
+server already had that backpressure through `inflight`/`maxConcurrent`. Wiring
+it in would have amortised nothing.
+
+`createBrowserPool()` in `engine/` pools the **process**. Each borrower still
+creates its own `BrowserContext`, which is what holds cookies, storage and
+cache, so requests remain as isolated from one another as when each had a
+private process — the cross-profile guarantees are unchanged. Pooling the
+context would save a little more and leak everything that matters, so the
+isolation test is the one that governs this design.
+
+`EngineOptions.browser` borrows one: `close()` then disposes the context and
+leaves the process to its owner. The agent takes an optional `browserPool` and
+returns the browser only after the engine is closed, so the next borrower cannot
+see the previous session. A named persistent profile is skipped, because such a
+profile is the browser and there is nothing to share.
+
+**Measured** over 5 sequential runs: 161 ms/run of setup becomes 53 ms/run,
+about 67% of it, and the saving compounds with volume. `/metrics` reports
+`pooledBrowsers`, and the pool is closed on the server's `close` event —
+warm browsers should outlive a request, never the server.
