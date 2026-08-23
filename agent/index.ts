@@ -294,6 +294,10 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
       let loopPrevViewHash: string | undefined;
       let loopRepeatCount = 0;
 
+      // Previous step's action, its outcome, and the hash of the page it acted
+      // on — reported to the model on the next turn's stub (AC-AG12).
+      let prevStep: { label: string; result: string; viewHash: string } | undefined;
+
       try {
         for (let stepN = 0; stepN < config.agent.maxSteps; stepN++) {
           const stepStart = Date.now();
@@ -650,10 +654,13 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
           // Erring wide is the right direction: a false positive kills a working
           // run, while a false negative merely costs steps until `maxSteps`,
           // which is the behaviour this replaced.
+          // One hash per step, shared by loop detection and the history stub
+          // below — both ask the same question of the same observation.
+          const viewHash = hashView(view);
+
           const loopThreshold = config.agent.loopThreshold;
           if (loopThreshold !== undefined) {
             const key = JSON.stringify(typedAction);
-            const viewHash = hashView(view);
             loopRepeatCount =
               key === loopPrevKey && viewHash === loopPrevViewHash ? loopRepeatCount + 1 : 1;
             loopPrevKey = key;
@@ -680,11 +687,42 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
           // whole run and always carried by the current turn's message. With
           // `maxHistorySteps` windowing the turns, total prompt growth is now
           // bounded: count-bounded turns × non-repeating outlines.
+          //
+          // The stub also reports how the PREVIOUS step turned out, because
+          // otherwise nothing does. Results were never in the conversation —
+          // the model inferred them by diffing one turn's outline against the
+          // next. Stubbing the outlines removed that inference without
+          // replacing it, so a model could click a dead button three times
+          // having been told, each time, only what it had asked for. Loop
+          // detection then ends the run as `unable` rather than the model
+          // noticing and trying something else.
+          //
+          // The note rides on the NEXT step's stub because that is where it is
+          // true: `viewHash` is of the page observed BEFORE this step's action,
+          // so comparing it with the previous step's hash is exactly the
+          // question "did the last action change anything?". Two messages per
+          // step still, so `windowedMessages` keeps pairing correctly.
+          const note =
+            prevStep === undefined
+              ? ''
+              : ` — previous action ${prevStep.label} → ${prevStep.result}` +
+                `, page ${viewHash === prevStep.viewHash ? 'unchanged' : 'changed'}`;
+
           history.push({
             role: 'user',
-            content: `[page state at step ${stepN}]`,
+            content: `[page state at step ${stepN}]${note}`,
           });
           history.push({ role: 'assistant', content: rawContent });
+
+          const failure = (result as ActionResult).error?.code;
+          prevStep = {
+            label:
+              typedAction.handle !== undefined
+                ? `${typedAction.action} ${typedAction.handle}`
+                : typedAction.action,
+            result: failure ?? 'ok',
+            viewHash,
+          };
 
           auditor.record({
             destination: config.model.endpoint,

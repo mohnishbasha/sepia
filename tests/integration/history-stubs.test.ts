@@ -31,17 +31,23 @@ interface CallParams {
 
 async function runWith(
   contents: string[],
-  opts: { maxHistorySteps?: number; goal?: string; viewNodes?: CompactNode[] } = {},
+  opts: {
+    maxHistorySteps?: number;
+    goal?: string;
+    viewNodes?: CompactNode[];
+    engineOverrides?: Parameters<typeof makeMockEngine>[0];
+  } = {},
 ) {
   const { createEngine } = await import('../../engine/index.js');
   const { createAgent } = await import('../../agent/index.js');
   const OpenAI = (await import('openai')).default;
 
-  const engine = makeMockEngine(
-    opts.viewNodes !== undefined
+  const engine = makeMockEngine({
+    ...(opts.viewNodes !== undefined
       ? { observe: vi.fn().mockResolvedValue(makeView(opts.viewNodes)) }
-      : {},
-  );
+      : {}),
+    ...(opts.engineOverrides ?? {}),
+  });
   vi.mocked(createEngine).mockResolvedValue(engine);
   const create = modelReturning(...contents);
   vi.mocked(OpenAI).mockImplementation(
@@ -79,8 +85,11 @@ describe('AC-AG11 — prior turns keep actions, not outlines', () => {
 
     // Third call: system + [stub0, act0, stub1, act1] + current turn.
     const userMsgs = callMessages(create, 2).filter((m) => m.role === 'user');
+    // Step 0 has nothing before it, so its stub is bare. Later stubs also
+    // carry how the previous step turned out (AC-AG12).
     expect(userMsgs[0]!.content).toBe('[page state at step 0]');
-    expect(userMsgs[1]!.content).toBe('[page state at step 1]');
+    expect(userMsgs[1]!.content).toMatch(/^\[page state at step 1\]/);
+    expect(userMsgs[1]!.content).not.toContain('Current page:');
   });
 
   it('keeps the current turn’s full outline intact', async () => {
@@ -198,5 +207,89 @@ describe('AC-AG11 — retained history stays inside the data boundary', () => {
     }
     // The prior action IS retained — in placeholder form only.
     expect(joined(callMessages(create, 1))).toContain('{{sepia:secret:1}}');
+  });
+});
+
+describe('AC-AG12 — the stub says how the previous step turned out', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  /** The stub messages, in order, excluding the current turn's full outline. */
+  function stubs(create: ReturnType<typeof modelReturning>, i: number): string[] {
+    return callMessages(create, i)
+      .filter((m) => m.role === 'user' && m.content.startsWith('[page state at step'))
+      .map((m) => m.content);
+  }
+
+  it('reports the error code of a failed action', async () => {
+    const { create } = await runWith(THREE_CALLS, {
+      engineOverrides: {
+        click: vi.fn().mockResolvedValue({
+          ok: false,
+          confidence: 0.9,
+          error: { code: 'ELEMENT_NOT_FOUND', message: 'nothing there' },
+        }),
+      },
+    });
+
+    // Without this the model is told only what it asked for, never what came
+    // of it — it could click a dead control until loop detection ends the run.
+    expect(stubs(create, 2)[1]).toContain('ELEMENT_NOT_FOUND');
+  });
+
+  it('reports an action that succeeded but moved nothing', async () => {
+    // The dead-button case: `ok: true`, and the page is identical afterwards.
+    // The error code alone would say "fine"; only the page comparison does not.
+    const { create } = await runWith(THREE_CALLS);
+
+    expect(stubs(create, 2)[1]).toContain('→ ok');
+    expect(stubs(create, 2)[1]).toContain('page unchanged');
+  });
+
+  it('reports an action that did change the page', async () => {
+    let n = 0;
+    const { create } = await runWith(THREE_CALLS, {
+      engineOverrides: {
+        observe: vi.fn().mockImplementation(async () => {
+          n += 1;
+          return makeView([{ handle: 'e1', role: 'button', name: `Step ${String(n)}`, indent: 0 }]);
+        }) as unknown as ReturnType<typeof makeMockEngine>['observe'],
+      },
+    });
+
+    expect(stubs(create, 2)[1]).toContain('page changed');
+  });
+
+  it('names the action and handle it is reporting on', async () => {
+    const { create } = await runWith(THREE_CALLS);
+
+    expect(stubs(create, 2)[1]).toContain('click e1');
+  });
+
+  it('leaves the first stub bare, since nothing preceded it', async () => {
+    const { create } = await runWith(THREE_CALLS);
+
+    expect(stubs(create, 2)[0]).toBe('[page state at step 0]');
+  });
+
+  it('still keeps two messages per retained step', async () => {
+    // The note rides on the existing stub rather than adding a third message,
+    // so `windowedMessages` keeps pairing turns correctly.
+    const { create } = await runWith([...THREE_CALLS], { maxHistorySteps: 1 });
+    const messages = callMessages(create, 2);
+
+    expect(messages).toHaveLength(1 * 2 + 2);
+  });
+
+  it('reports a secret-carrying step without the literal (AC-P7)', async () => {
+    const { create } = await runWith(
+      [
+        JSON.stringify({ action: 'type', handle: 'e1', text: '{{sepia:secret:1}}' }),
+        JSON.stringify({ action: 'click', handle: 'e2' }),
+        doneAction('signed in'),
+      ],
+      { goal: 'sign in with password s3cret-hunter2' },
+    );
+
+    expect(joined(callMessages(create, 2))).not.toContain('s3cret-hunter2');
   });
 });
