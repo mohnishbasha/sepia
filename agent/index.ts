@@ -36,6 +36,16 @@ export interface StepTrace {
   latencyMs: number;
   result: ActionResult;
   secretsRedacted: boolean;
+  /**
+   * The page as the model saw it — redacted and injection-sanitised — recorded
+   * only when `privacy.recordPageContent` is on.
+   *
+   * The training export needs the input its samples are supposed to teach from,
+   * and nothing else in a trace holds it (issue #21). Off by default: it is
+   * bulky, and `sepia run` prints the trace to stdout, so recording it always
+   * would dump every page outline into the terminal.
+   */
+  pageContent?: string;
 }
 
 export interface RunTrace {
@@ -607,6 +617,7 @@ export function createAgent(rawConfig: SepiaConfig): SepiaAgent {
           const latencyMs = Date.now() - stepStart;
 
           const stepTrace: StepTrace = {
+            ...(config.privacy.recordPageContent === true ? { pageContent: safePageContent } : {}),
             stepN,
             action: typedAction.action,
             confidence,

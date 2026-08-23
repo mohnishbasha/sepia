@@ -33,19 +33,25 @@ function stepToShareGPT(
 
 /**
  * Export a list of RunTraces to ShareGPT JSONL.
- * Each successful step becomes one conversation turn.
- * Skips runs that did not succeed and steps with secretsRedacted.
+ *
+ * Each successful step becomes one conversation turn. Skips runs that did not
+ * succeed, steps that carried a secret, and steps with no recorded page — the
+ * page is the input the sample teaches from, so without it there is nothing to
+ * learn (AC-TR1). Recording is opt-in via `privacy.recordPageContent`.
  */
-export function exportToShareGPT(traces: RunTrace[], pageContents: Map<string, string[]>): string {
+export function exportToShareGPT(traces: RunTrace[]): string {
   const lines: string[] = [];
 
   for (const trace of traces) {
     if (trace.outcome !== 'success') continue;
-    const pages = pageContents.get(trace.runId) ?? [];
 
     for (const step of trace.steps) {
       if (step.secretsRedacted) continue;
-      const pageContent = pages[step.stepN] ?? '';
+      // A step whose page was never recorded cannot teach anything: the input
+      // half of the sample is the thing being learned from. Emitting it anyway
+      // is what made every exported sample worthless (issue #21).
+      const pageContent = step.pageContent;
+      if (pageContent === undefined || pageContent === '') continue;
       const conversation: ShareGPTConversation = {
         conversations: stepToShareGPT(trace.goal, step, pageContent),
         metadata: {
@@ -67,16 +73,16 @@ export function exportToShareGPT(traces: RunTrace[], pageContents: Map<string, s
  * Each successful step becomes one instruction sample.
  * Skips runs that did not succeed and steps with secretsRedacted.
  */
-export function exportToAlpaca(traces: RunTrace[], pageContents: Map<string, string[]>): string {
+export function exportToAlpaca(traces: RunTrace[]): string {
   const lines: string[] = [];
 
   for (const trace of traces) {
     if (trace.outcome !== 'success') continue;
-    const pages = pageContents.get(trace.runId) ?? [];
 
     for (const step of trace.steps) {
       if (step.secretsRedacted) continue;
-      const pageContent = pages[step.stepN] ?? '';
+      const pageContent = step.pageContent;
+      if (pageContent === undefined || pageContent === '') continue;
       const sample: AlpacaSample = {
         instruction: SYSTEM_MESSAGE,
         input: `Goal: ${trace.goal}\n\nCurrent page:\n${pageContent}`,
