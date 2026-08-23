@@ -101,14 +101,17 @@ function hasInteractiveDescendant(node: AXSnapshot): boolean {
 /**
  * The state block for a node.
  *
- * Always returns one: `enabled` is set on every branch, so the `hasState` flag
- * this used to carry could never be false and the `undefined` return was
- * unreachable — CodeQL called the final conditional trivially true, correctly.
- * The return type keeps `undefined` because callers already handle it and
- * narrowing it is a separate decision; what is gone is the dead bookkeeping
- * that implied a case which never happened.
+ * Always returns one: `enabled` is set unconditionally, so there is no node
+ * without a state block. The signature says so rather than offering an
+ * `undefined` that never arrives — leaving it in meant every call site carried
+ * a guard that could not fire, which CodeQL flagged as unneeded defensive code
+ * once the dead `hasState` flag was gone.
+ *
+ * Whether a node with nothing but `enabled: true` deserves a state block at all
+ * is a separate question: it is the noise `minimal` strips (AC-S6) and the MCP
+ * omits (MCP-16), and changing it here would move every corpus baseline.
  */
-function buildState(node: AXSnapshot): NodeState | undefined {
+function buildState(node: AXSnapshot): NodeState {
   const state: NodeState = { enabled: !node.disabled };
 
   if (node.checked === true) state.checked = true;
@@ -237,8 +240,7 @@ function walkAX(
       compactNode.value = node.value;
     }
 
-    const state = buildState(node);
-    if (state !== undefined) compactNode.state = state;
+    compactNode.state = buildState(node);
 
     if (node.attrs !== undefined && Object.keys(node.attrs).length > 0) {
       compactNode.attrs = node.attrs;
@@ -452,8 +454,7 @@ function domFallbackWalk(
         name,
         indent: depth,
       };
-      const state = buildState(node);
-      if (state !== undefined) compactNode.state = state;
+      compactNode.state = buildState(node);
       results.push(compactNode);
     }
   }
