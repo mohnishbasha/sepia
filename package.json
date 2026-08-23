@@ -48,7 +48,7 @@
     "test:example": "vitest run tests/example",
     "dev": "tsx watch cli/index.ts",
     "security:audit": "pnpm audit --audit-level=critical",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

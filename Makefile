@@ -233,6 +233,9 @@ litellm-stop: ## Stop and remove the LiteLLM proxy container
 
 # ── Training data export ──────────────────────────────────────────────────────
 
+e2e: ## End-to-end: build -> pack -> install -> run -> deploy (E2E_DOCKER=0 skips the image)
+	@bash scripts/e2e.sh
+
 export-traces: ## Export RunTrace JSONL to ShareGPT and Alpaca formats
 	@: $${TRACE_FILE:?Usage: make export-traces TRACE_FILE=traces.jsonl OUT_DIR=out}
 	@: $${OUT_DIR:?Usage: make export-traces TRACE_FILE=traces.jsonl OUT_DIR=out}
