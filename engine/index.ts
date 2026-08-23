@@ -54,7 +54,6 @@ export interface EngineOptions {
   profileDir?: string;
   userAgent?: string;
   viewport?: { width: number; height: number };
-  humanTiming?: boolean;
   /**
    * Minimum resolver confidence required before an action is performed.
    * Below this the engine refuses rather than acting on a guess (AC-AG6).

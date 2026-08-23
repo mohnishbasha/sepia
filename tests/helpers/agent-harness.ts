@@ -60,7 +60,7 @@ export function makeConfig(overrides: Partial<SepiaConfig['agent']> = {}): Sepia
       apiKey: 'test',
       maxTokensPerStep: 10_000,
     },
-    browser: { profile: 'default', headless: true, ephemeral: true, humanTiming: false },
+    browser: { profile: 'default', headless: true, ephemeral: true },
     agent: {
       maxSteps: 10,
       maxTokensPerRun: 100_000,

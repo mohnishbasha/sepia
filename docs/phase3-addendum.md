@@ -637,3 +637,26 @@ trade needs revisiting — measured at 32 chars it is 4,602 and at 24 chars 4,47
 with no group losing distinctness at either. It is left at 48 so #25's behaviour
 is unchanged. A page whose controls do not collide is untouched: the GitHub
 issues list measured 1,206 tokens before and after.
+
+---
+
+## AC-C1 — declared config reaches what it configures (issue #20)
+
+`model.maxTokensPerStep` was declared in `ModelConfig`, defaulted, clamped by
+`mergeConfig` and written up in the README, while `agent/index.ts` sent
+`max_tokens: 1024` on every call. Setting it did nothing. The hardcoded value
+also matters on its own: 1024 is tight for a reasoning model, which spends part
+of the budget before it emits any JSON, so a run fails in a way the operator has
+no configuration route out of.
+
+It is now sent on every call, and the default drops from 100,000 to 8,192. The
+old default was safe only because it was dead — sending it would be rejected
+outright by providers that cap `max_tokens` well below it.
+
+`browser.humanTiming` was the same shape of claim with no behaviour anywhere
+behind it. It is removed rather than implemented: typing and pointer jitter is
+an anti-detection feature belonging with the fingerprint work (AC-F\*), with a
+spec of its own about what is randomised and over what distribution. Inventing
+that inside a config cleanup would be guessing at a contract, and a knob that
+silently does nothing is exactly the "believed and absent" problem SR-13 was
+opened for.

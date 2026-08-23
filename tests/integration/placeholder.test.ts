@@ -118,7 +118,6 @@ describe('integration — agent loop (mocked engine + model)', () => {
         profile: 'default',
         headless: true,
         ephemeral: true,
-        humanTiming: false,
       },
       agent: {
         maxSteps: 10,
@@ -244,7 +243,7 @@ describe('integration — agent loop (mocked engine + model)', () => {
         apiKey: 'test',
         maxTokensPerStep: 1000,
       },
-      browser: { profile: 'default', headless: true, ephemeral: true, humanTiming: false },
+      browser: { profile: 'default', headless: true, ephemeral: true },
       agent: {
         maxSteps: 10,
         maxTokensPerRun: 100_000,
@@ -330,7 +329,7 @@ describe('integration — agent loop (mocked engine + model)', () => {
         apiKey: 'test',
         maxTokensPerStep: 1000,
       },
-      browser: { profile: 'default', headless: true, ephemeral: true, humanTiming: false },
+      browser: { profile: 'default', headless: true, ephemeral: true },
       agent: {
         maxSteps: 10,
         maxTokensPerRun: 100_000,
@@ -402,7 +401,7 @@ describe('integration — agent loop (mocked engine + model)', () => {
         apiKey: 'test',
         maxTokensPerStep: 1000,
       },
-      browser: { profile: 'default', headless: true, ephemeral: true, humanTiming: false },
+      browser: { profile: 'default', headless: true, ephemeral: true },
       agent: {
         maxSteps: 10,
         maxTokensPerRun: 100_000,
