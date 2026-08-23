@@ -519,6 +519,7 @@ since interactive mode is where watching matters most.
 | AC      | Description                                                                                                                                                                                                                                                                                                 | Where                                     |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
 | AC-AG11 | Prior history turns keep the model's action verbatim with their outline replaced by a `[page state at step N]` stub; only the current turn carries the full compact view; `maxHistorySteps` still truncates; prompt growth on an unchanged page stays flat; retained content stays inside the data boundary | `tests/integration/history-stubs.test.ts` |
+| AC-AG12 | A prior step's outcome (action, result code, and whether the page changed) is reported on the next turn's stub; the first stub stays bare; two messages per retained step; no secret literal                                                                                                                | `tests/integration/history-stubs.test.ts` |
 
 ### Changes made
 
@@ -550,3 +551,34 @@ but only at a level above where most tasks finish. The model needs the
 current page plus a record of what it did — not ten copies of the same form.
 Prior outlines now collapse to one-line stubs while actions stay verbatim,
 cutting unchanged-page prompt cost roughly k×→constant per call.
+
+---
+
+## Follow-up: outcomes in the history stub (AC-AG12)
+
+Stubbing prior outlines (AC-AG11) removed the only way an action's outcome
+reached the model. Results were never in the conversation — the model inferred
+them by diffing one turn's outline against the next, and stubs ended that
+without replacing it. Measured on a dead control: three consecutive failing
+clicks, each returning `ELEMENT_NOT_FOUND`, with the prompt showing the model
+only what it had asked for. Loop detection (AC-AG10) then ends such a run as
+`unable`, where the model might otherwise have noticed and tried something else.
+
+Each stub after the first now carries the preceding step's action, its result
+code, and whether the page moved:
+
+```
+[page state at step 1] — previous action click e1 → ok, page unchanged
+```
+
+`ok, page unchanged` is the case worth having: the action reported success and
+the page is byte-identical afterwards, which is exactly the dead-control signal
+no error code carries. The comparison is free — `hashView()` was already being
+computed for loop detection, and is now computed once per step and shared.
+
+The note rides on the next step's stub rather than adding a third message,
+because that is both where it is true (the hash is of the page observed _before_
+that step's action, so comparing it with the previous step's answers "did the
+last action change anything?") and what keeps `windowedMessages` pairing turns
+correctly. Cost is 11-13 tokens per retained turn, roughly 1% of what AC-AG11
+saved.
